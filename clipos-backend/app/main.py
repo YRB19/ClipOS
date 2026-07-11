@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.models.job import init_db
-from app.routers import health, ingest, transcribe, highlights, clips, reframe, captions, scoring
+from app.routers import health, ingest, transcribe, highlights, clips, reframe, captions, scoring, jobs
 
 
 @asynccontextmanager
@@ -22,6 +22,7 @@ app.include_router(clips.router)
 app.include_router(reframe.router)
 app.include_router(captions.router)
 app.include_router(scoring.router)
+app.include_router(jobs.router)
 
 
 @app.get("/")

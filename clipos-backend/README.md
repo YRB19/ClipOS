@@ -77,3 +77,40 @@ Reframe a clip to vertical:
 ```bash
 curl -X POST http://localhost:8000/jobs/{job_id}/clips/{clip_id}/reframe
 ```
+
+## Automatic Pipeline (Phase 9)
+
+The full pipeline can run automatically via Redis RQ instead of calling each endpoint by hand. This requires **three processes** running during dev:
+
+```bash
+# Terminal 1 — Redis
+redis-server
+
+# Terminal 2 — uvicorn
+uvicorn app.main:app --reload
+
+# Terminal 3 — RQ worker
+python worker.py
+```
+
+Then enqueue the automatic pipeline:
+```bash
+curl -X POST http://localhost:8000/jobs/{job_id}/run
+```
+
+This enqueues `run_pipeline(job_id)` onto Redis RQ. The worker picks it up and calls each stage in sequence: transcribe → highlights → clips → reframe → captions → score. If any stage fails, the job is marked `failed` with an `error_message` and later stages are skipped.
+
+### Automatic pipeline endpoints
+
+- `GET /jobs` — list all jobs (most recent first), optional `?status=` filter
+- `GET /jobs/{job_id}` — job detail with `clip_ids` list
+- `POST /jobs/{job_id}/run` — enqueue the full automatic pipeline (requires status `ingested`)
+- `GET /jobs/{job_id}/queue_status` — poll the RQ job state (`queued`/`started`/`finished`/`failed`)
+
+### Note
+
+`burn_captions` is **not** auto-run by the pipeline — it's slow and you may want to review the generated `captions.ass` before burning in. Call it manually after the pipeline completes:
+
+```bash
+curl -X POST http://localhost:8000/jobs/{job_id}/clips/{clip_id}/burn
+```

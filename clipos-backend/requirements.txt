@@ -10,3 +10,5 @@ python-multipart==0.0.18
 yt-dlp==2025.2.19
 faster-whisper==1.2.1
 opencv-python==5.0.0.93
+rq==2.0.0
+redis==6.0.0
