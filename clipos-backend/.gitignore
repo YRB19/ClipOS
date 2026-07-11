@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Environment
+.env
+
+# Database
+*.db
+
+# Storage (user uploads)
+storage/raw/*
+storage/clips/*
+!storage/raw/.gitkeep
+!storage/clips/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Runtime state
+.clipos_state
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/

@@ -1,0 +1,12 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic-settings==2.7.1
+python-dotenv==1.0.1
+pytest==8.3.4
+httpx==0.28.1
+requests==2.32.3
+sqlmodel==0.0.39
+python-multipart==0.0.18
+yt-dlp==2025.2.19
+faster-whisper==1.2.1
+opencv-python==5.0.0.93
