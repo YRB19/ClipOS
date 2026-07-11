@@ -10,6 +10,7 @@
 #   reframe [clip_id] [job_id] Reframe a clip (defaults to current job, first clip)
 #   captions [clip_id] [job_id]  Generate ASS captions (defaults to current job/clip)
 #   burn [clip_id] [job_id]    Burn captions into clip video (defaults to current job/clip)
+#   score [job_id]             Score and title all clips (defaults to current job)
 #   run <file>                 Full pipeline: upload -> transcribe -> highlights -> clips
 #   status [job_id]            Show current job/clip state
 #   jobs                       List recent jobs (requires GET /jobs endpoint - see note below)
@@ -146,6 +147,12 @@ cmd_burn() {
   curl -s -X POST "$BASE_URL/jobs/${job_id}/clips/${clip_id}/burn" -w "\n%{http_code}\n"
 }
 
+cmd_score() {
+  local job_id="${1:-$(_current_job)}"
+  echo "Scoring and titling clips for $job_id..."
+  curl -s -X POST "$BASE_URL/jobs/${job_id}/score" -w "\n%{http_code}\n"
+}
+
 cmd_run() {
   local file="$1"
   cmd_upload "$file"
@@ -157,6 +164,8 @@ cmd_run() {
   cmd_highlights "$job_id"
   sleep 1
   cmd_clips "$job_id"
+  sleep 1
+  cmd_score "$job_id"
   echo ""
   echo "Pipeline complete. job_id=$job_id"
 }
@@ -172,6 +181,8 @@ cmd_full() {
   cmd_highlights "$job_id"
   sleep 1
   cmd_clips "$job_id"
+  sleep 1
+  cmd_score "$job_id"
   sleep 1
   cmd_reframe
   sleep 1
@@ -222,13 +233,14 @@ case "${1:-}" in
   reframe)    cmd_reframe "${2:-}" "${3:-}" ;;
   captions)   cmd_captions "${2:-}" "${3:-}" ;;
   burn)       cmd_burn "${2:-}" "${3:-}" ;;
+  score)      cmd_score "${2:-}" ;;
   run)        cmd_run "$2" ;;
   full)       cmd_full "$2" ;;
   status)     cmd_status "${2:-}" ;;
   use)        cmd_use "$2" ;;
   jobs)       cmd_jobs ;;
   *)
-    echo "Usage: ./clipos.sh {upload|transcribe|highlights|clips|reframe|captions|burn|run|full|status|use|jobs} [args]"
+    echo "Usage: ./clipos.sh {upload|transcribe|highlights|clips|reframe|captions|burn|score|run|full|status|use|jobs} [args]"
     exit 1
     ;;
 esac

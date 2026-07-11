@@ -64,6 +64,9 @@ MOCK_SCORING_RESPONSE = json.dumps([
     },
 ])
 
+MOCK_LLM_PATCH = "app.core.scoring.call_llm_with_fallback"
+MOCK_ENGINE_PATCH = "app.core.scoring.engine"
+
 
 @pytest.fixture(name="db_engine")
 def db_engine(tmp_path):
@@ -86,7 +89,6 @@ def client(db_engine):
 
 def _setup_job(client, db_engine, tmp_path, status="clips_ready", highlights=None, transcript=None):
     """Create a job, write highlights.json + transcript.json, return job_id."""
-    # Create a dummy video via ingest
     dummy = tmp_path / "dummy.mp4"
     import subprocess
     subprocess.run(
@@ -118,23 +120,20 @@ def test_score_success(client, db_engine, tmp_path):
     """Mock LLM, verify highlights.json is merged and sorted by final_score."""
     job_id = _setup_job(client, db_engine, tmp_path)
 
-    llm_return = {"choices": [{"message": {"content": MOCK_SCORING_RESPONSE}}]}
-
-    with patch("app.core.llm_fallback.call_llm_with_fallback", return_value=(MOCK_SCORING_RESPONSE, "tier_1:test")):
-        resp = client.post(f"/jobs/{job_id}/score")
+    with patch(MOCK_LLM_PATCH, return_value=(MOCK_SCORING_RESPONSE, "tier_1:test")):
+        with patch(MOCK_ENGINE_PATCH, db_engine):
+            resp = client.post(f"/jobs/{job_id}/score")
 
     assert resp.status_code == 200
     scored = resp.json()
 
     assert len(scored) == 2
-    # Sorted by final_score descending — aaa (0.95) first, bbb (0.82) second
     assert scored[0]["clip_id"] == "clip-aaa-111"
     assert scored[0]["final_score"] == 0.95
     assert scored[0]["title"] == "The Deep Dive Opener"
     assert scored[1]["clip_id"] == "clip-bbb-222"
     assert scored[1]["final_score"] == 0.82
 
-    # Verify file on disk
     highlights_path = Path("./storage/raw") / job_id / "highlights.json"
     on_disk = json.loads(highlights_path.read_text())
     assert len(on_disk) == 2
@@ -145,19 +144,18 @@ def test_merge_preserves_existing_fields(client, db_engine, tmp_path):
     """New fields are added; original fields are never removed or renamed."""
     job_id = _setup_job(client, db_engine, tmp_path)
 
-    with patch("app.core.llm_fallback.call_llm_with_fallback", return_value=(MOCK_SCORING_RESPONSE, "tier_1:test")):
-        resp = client.post(f"/jobs/{job_id}/score")
+    with patch(MOCK_LLM_PATCH, return_value=(MOCK_SCORING_RESPONSE, "tier_1:test")):
+        with patch(MOCK_ENGINE_PATCH, db_engine):
+            resp = client.post(f"/jobs/{job_id}/score")
 
     assert resp.status_code == 200
     for entry in resp.json():
-        # Original fields still present
         assert "clip_id" in entry
         assert "start" in entry
         assert "end" in entry
         assert "hook_text" in entry
         assert "virality_score" in entry
         assert "reasoning" in entry
-        # New fields added
         assert "title" in entry
         assert "final_hook_text" in entry
         assert "final_score" in entry
@@ -166,7 +164,6 @@ def test_merge_preserves_existing_fields(client, db_engine, tmp_path):
 
 def test_sort_by_final_score(client, db_engine, tmp_path):
     """Highlights must be sorted descending by final_score."""
-    # Swap scores so bbb > aaa
     swapped_response = json.dumps([
         {
             "clip_id": "clip-aaa-111",
@@ -185,8 +182,9 @@ def test_sort_by_final_score(client, db_engine, tmp_path):
     ])
     job_id = _setup_job(client, db_engine, tmp_path)
 
-    with patch("app.core.llm_fallback.call_llm_with_fallback", return_value=(swapped_response, "tier_1:test")):
-        resp = client.post(f"/jobs/{job_id}/score")
+    with patch(MOCK_LLM_PATCH, return_value=(swapped_response, "tier_1:test")):
+        with patch(MOCK_ENGINE_PATCH, db_engine):
+            resp = client.post(f"/jobs/{job_id}/score")
 
     assert resp.status_code == 200
     scored = resp.json()
@@ -229,13 +227,13 @@ def test_malformed_llm_json_raises(client, db_engine, tmp_path):
         (Path("./storage/raw") / job_id / "highlights.json").read_text()
     )
 
-    with patch("app.core.llm_fallback.call_llm_with_fallback", return_value=("not json at all", "tier_1:test")):
-        resp = client.post(f"/jobs/{job_id}/score")
+    with patch(MOCK_LLM_PATCH, return_value=("not json at all", "tier_1:test")):
+        with patch(MOCK_ENGINE_PATCH, db_engine):
+            resp = client.post(f"/jobs/{job_id}/score")
 
     assert resp.status_code == 500
     assert "Scoring failed" in resp.json()["detail"]
 
-    # Original highlights.json should be untouched
     on_disk = json.loads(
         (Path("./storage/raw") / job_id / "highlights.json").read_text()
     )
@@ -248,8 +246,9 @@ def test_malformed_json_object_not_array_raises(client, db_engine, tmp_path):
 
     bad_json = json.dumps({"clip_id": "something", "title": "nope"})
 
-    with patch("app.core.llm_fallback.call_llm_with_fallback", return_value=(bad_json, "tier_1:test")):
-        resp = client.post(f"/jobs/{job_id}/score")
+    with patch(MOCK_LLM_PATCH, return_value=(bad_json, "tier_1:test")):
+        with patch(MOCK_ENGINE_PATCH, db_engine):
+            resp = client.post(f"/jobs/{job_id}/score")
 
     assert resp.status_code == 500
 
@@ -258,8 +257,9 @@ def test_status_transitions_to_done(client, db_engine, tmp_path):
     """After successful scoring, job status should be 'done'."""
     job_id = _setup_job(client, db_engine, tmp_path)
 
-    with patch("app.core.llm_fallback.call_llm_with_fallback", return_value=(MOCK_SCORING_RESPONSE, "tier_1:test")):
-        client.post(f"/jobs/{job_id}/score")
+    with patch(MOCK_LLM_PATCH, return_value=(MOCK_SCORING_RESPONSE, "tier_1:test")):
+        with patch(MOCK_ENGINE_PATCH, db_engine):
+            client.post(f"/jobs/{job_id}/score")
 
     with Session(db_engine) as session:
         job = session.get(Job, job_id)
@@ -303,41 +303,39 @@ def test_missing_clip_id_in_llm_response_graceful(client, db_engine, tmp_path):
             "final_score": 0.90,
             "rank_reasoning": "Best clip",
         },
-        # clip-bbb-222 missing
     ])
     job_id = _setup_job(client, db_engine, tmp_path)
 
-    with patch("app.core.llm_fallback.call_llm_with_fallback", return_value=(partial_response, "tier_1:test")):
-        resp = client.post(f"/jobs/{job_id}/score")
+    with patch(MOCK_LLM_PATCH, return_value=(partial_response, "tier_1:test")):
+        with patch(MOCK_ENGINE_PATCH, db_engine):
+            resp = client.post(f"/jobs/{job_id}/score")
 
     assert resp.status_code == 200
     scored = resp.json()
     assert len(scored) == 2
 
-    # clip-aaa has merged data
     aaa = next(e for e in scored if e["clip_id"] == "clip-aaa-111")
     assert aaa["title"] == "The Opener"
 
-    # clip-bbb gets defaults for missing LLM data
     bbb = next(e for e in scored if e["clip_id"] == "clip-bbb-222")
-    assert bbb["title"] == ""  # default
-    assert bbb["final_hook_text"] == "Second hook"  # falls back to original hook_text
-    assert bbb["final_score"] == 0.7  # falls back to original virality_score
+    assert bbb["title"] == ""
+    assert bbb["final_hook_text"] == "Second hook"
+    assert bbb["final_score"] == 0.7
 
 
 def test_all_tiers_fail(client, db_engine, tmp_path):
     """When all LLM tiers fail, scoring returns 500."""
     job_id = _setup_job(client, db_engine, tmp_path)
 
-    with patch("app.core.llm_fallback.call_llm_with_fallback", side_effect=RuntimeError("All LLM providers failed:\ntier_1: timeout")):
-        resp = client.post(f"/jobs/{job_id}/score")
+    with patch(MOCK_LLM_PATCH, side_effect=RuntimeError("All LLM providers failed:\ntier_1: timeout")):
+        with patch(MOCK_ENGINE_PATCH, db_engine):
+            resp = client.post(f"/jobs/{job_id}/score")
 
     assert resp.status_code == 500
     assert "Scoring failed" in resp.json()["detail"]
 
-    # highlights.json untouched
     on_disk = json.loads(
         (Path("./storage/raw") / job_id / "highlights.json").read_text()
     )
     assert len(on_disk) == 2
-    assert "title" not in on_disk[0]  # not modified
+    assert "title" not in on_disk[0]
