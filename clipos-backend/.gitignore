@@ -38,6 +38,9 @@ Thumbs.db
 # Runtime state
 .clipos_state
 
+# Test artifacts
+MagicMock/
+
 # Testing
 .pytest_cache/
 .coverage
