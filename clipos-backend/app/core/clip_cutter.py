@@ -87,6 +87,8 @@ def cut_clips(job_id: str) -> list[dict]:
     with Session(engine) as session:
         job = session.get(Job, job_id)
         if job:
+            from datetime import datetime, timezone
+            job.updated_at = datetime.now(timezone.utc)
             if results:
                 job.status = "clips_ready"
             else:

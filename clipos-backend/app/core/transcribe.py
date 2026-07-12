@@ -82,7 +82,9 @@ def transcribe_video(job_id: str) -> list[dict]:
         with Session(engine) as session:
             job = session.get(Job, job_id)
             if job:
+                from datetime import datetime, timezone
                 job.status = "transcribed"
+                job.updated_at = datetime.now(timezone.utc)
                 session.add(job)
                 session.commit()
 
@@ -93,8 +95,10 @@ def transcribe_video(job_id: str) -> list[dict]:
         with Session(engine) as session:
             job = session.get(Job, job_id)
             if job:
+                from datetime import datetime, timezone
                 job.status = "failed"
                 job.error_message = str(e)
+                job.updated_at = datetime.now(timezone.utc)
                 session.add(job)
                 session.commit()
         raise

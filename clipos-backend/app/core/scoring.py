@@ -150,7 +150,9 @@ def score_and_title_clips(job_id: str) -> list[dict]:
     with Session(engine) as session:
         job = session.get(Job, job_id)
         if job:
+            from datetime import datetime, timezone
             job.status = "done"
+            job.updated_at = datetime.now(timezone.utc)
             session.add(job)
             session.commit()
 
