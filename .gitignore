@@ -2,3 +2,9 @@
 .DS_Store
 Thumbs.db
 *.rdb
+.venv/
+.DS_Store
+Thumbs.db
+*.rdb
+
+opencode.json
