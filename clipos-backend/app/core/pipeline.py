@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 def _fail(job_id: str, stage: str, exc: Exception) -> None:
     """Set the job to failed with an error message and log it."""
+    from datetime import datetime, timezone
     msg = f"{stage}: {exc}"
     logger.error("Pipeline failed for job %s — %s", job_id, msg)
     with Session(engine) as session:
@@ -30,6 +31,7 @@ def _fail(job_id: str, stage: str, exc: Exception) -> None:
         if job:
             job.status = "failed"
             job.error_message = msg
+            job.updated_at = datetime.now(timezone.utc)
             session.add(job)
             session.commit()
 

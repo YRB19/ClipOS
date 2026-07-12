@@ -23,11 +23,16 @@ def _redis() -> Redis:
 
 
 def _job_dict(job: Job) -> dict:
+    from pathlib import Path as _Path
+    source_filename = _Path(job.video_path).name if job.video_path else None
     return {
         "job_id": job.job_id,
+        "source_filename": source_filename,
         "status": job.status,
         "created_at": job.created_at.isoformat() if job.created_at else None,
+        "updated_at": job.updated_at.isoformat() if job.updated_at else None,
         "duration_seconds": job.duration_seconds,
+        "error_message": job.error_message,
     }
 
 
@@ -131,25 +136,26 @@ def run_job(job_id: str, session: Session = Depends(get_session)):
 
 @router.get("/{job_id}/queue_status")
 def get_queue_status(job_id: str, session: Session = Depends(get_session)):
-    """Poll RQ for the underlying rq_job_id's state.
+    """Return pipeline stage from the DB (source of truth) plus RQ state for debugging.
 
-    Looks for an RQ job that was enqueued for this ClipOS job_id.
-    Returns the RQ state (queued/started/finished/failed) and metadata.
+    Response shape:
+        job_id, current_stage, rq_state, error_message, started_at, finished_at
     """
     job = session.get(Job, job_id)
     if not job:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 
+    # current_stage is always the pipeline status from the jobs table
+    current_stage = job.status
+
+    # Try to find the RQ job for additional debugging info
+    rq_state = "unknown"
+    started_at = None
+    finished_at = None
     try:
         q = Queue(connection=_redis())
-        # Search for RQ jobs by iterating recent job IDs — RQ doesn't have
-        # a native "find by args" query, so we check the most recent jobs.
-        # For correctness, we store the rq_job_id on the Job model at
-        # enqueue time.  Since we don't have a dedicated field, we scan
-        # the queue's started/queued/finished registries.
         rq_job = None
 
-        # Check all active registries for a job with matching args
         for registry in [q.started_job_registry, q.deferred_job_registry,
                          q.scheduled_job_registry]:
             for jid in registry.get_job_ids():
@@ -160,24 +166,34 @@ def get_queue_status(job_id: str, session: Session = Depends(get_session)):
             if rq_job:
                 break
 
-        # Also check the main queue
         if not rq_job:
             for rj in q.jobs:
                 if rj.args == (job_id,) and rj.func_name == "app.core.pipeline:run_pipeline":
                     rq_job = rj
                     break
 
-        if not rq_job:
-            return {"rq_job_id": None, "state": "not_found", "detail": "No RQ job found for this ClipOS job"}
+        if rq_job:
+            rq_state = rq_job.get_status()
+            started_at = rq_job.created_at.isoformat() if rq_job.created_at else None
+            finished_at = rq_job.ended_at.isoformat() if rq_job.ended_at else None
+        else:
+            # No RQ job found — determine likely RQ state from DB status
+            if current_stage == "ingested":
+                rq_state = "queued"
+            elif current_stage in ("done", "failed"):
+                rq_state = "finished"
+            else:
+                rq_state = "started"
 
-        return {
-            "rq_job_id": rq_job.id,
-            "state": rq_job.get_status(),
-            "created_at": rq_job.created_at.isoformat() if rq_job.created_at else None,
-            "ended_at": rq_job.ended_at.isoformat() if rq_job.ended_at else None,
-            "result": str(rq_job.return_value) if rq_job.return_value is not None else None,
-            "exc_info": rq_job.exc_info if rq_job.exc_info else None,
-        }
     except Exception as e:
         logger.warning("Error querying RQ for job %s: %s", job_id, e)
-        return {"rq_job_id": None, "state": "unknown", "detail": str(e)}
+        rq_state = "unknown"
+
+    return {
+        "job_id": job_id,
+        "current_stage": current_stage,
+        "rq_state": rq_state,
+        "error_message": job.error_message,
+        "started_at": started_at,
+        "finished_at": finished_at,
+    }

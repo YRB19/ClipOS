@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlmodel import SQLModel, Field, Session, create_engine
+from sqlmodel import SQLModel, Field, Session, create_engine, text
 
 from app.config import settings
 
@@ -12,6 +12,7 @@ class Job(SQLModel, table=True):
     source_type: str  # "upload" | "youtube"
     status: str  # "ingested" | "transcribed" | "highlights_ready" | "clips_ready" | "done" | "failed"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     video_path: str
     duration_seconds: float
     error_message: str | None = Field(default=None)
@@ -26,6 +27,15 @@ engine = create_engine(
 def init_db(custom_engine=None) -> None:
     e = custom_engine or engine
     SQLModel.metadata.create_all(e)
+
+    # SQLite migration: add updated_at column if missing from existing table
+    if "sqlite" in str(e.url):
+        with Session(e) as session:
+            try:
+                session.execute(text("SELECT updated_at FROM jobs LIMIT 1"))
+            except Exception:
+                session.execute(text("ALTER TABLE jobs ADD COLUMN updated_at TIMESTAMP"))
+                session.commit()
 
 
 def get_session(custom_engine=None):

@@ -11,8 +11,19 @@ Prerequisites:
     - All dependencies installed (pip install -r requirements.txt)
 """
 
+import os
+# macOS fork safety: must be set BEFORE importing cv2/av/faster_whisper
+os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
+
 import sys
 import logging
+
+# Pre-load heavy libraries in parent process before RQ forks
+# This prevents macOS Objective-C runtime crashes in forked children
+import cv2
+import av
+from faster_whisper import WhisperModel
+_ = WhisperModel  # silence unused warning
 
 from redis import Redis
 from rq import Queue, Worker
