@@ -425,3 +425,80 @@ def test_run_job_enqueues(client, db_engine, source_video, tmp_path):
     data = resp.json()
     assert data["rq_job_id"] == "rq-fake-123"
     assert data["status"] == "queued"
+
+
+# ── GET /jobs/{job_id}/queue_status tests ────────────────────────────────────
+
+
+def test_queue_status_returns_current_stage_from_db(client, db_engine, source_video, tmp_path):
+    """queue_status.current_stage must come from jobs.status in the DB, not RQ state."""
+    job_id = _setup_job(client, db_engine, source_video, tmp_path, status="transcribed")
+
+    # Even with no RQ job found, current_stage should reflect the DB status
+    resp = client.get(f"/jobs/{job_id}/queue_status")
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert data["job_id"] == job_id
+    assert data["current_stage"] == "transcribed"
+    assert "rq_state" in data
+    assert "error_message" in data
+
+
+def test_queue_status_reflects_status_changes(client, db_engine, source_video, tmp_path):
+    """queue_status tracks status changes in the DB across multiple reads."""
+    job_id = _setup_job(client, db_engine, source_video, tmp_path, status="ingested")
+
+    resp = client.get(f"/jobs/{job_id}/queue_status")
+    assert resp.json()["current_stage"] == "ingested"
+
+    # Simulate pipeline advancing the status
+    with Session(db_engine) as session:
+        job = session.get(Job, job_id)
+        job.status = "highlights_ready"
+        session.add(job)
+        session.commit()
+
+    resp = client.get(f"/jobs/{job_id}/queue_status")
+    assert resp.json()["current_stage"] == "highlights_ready"
+
+
+def test_queue_status_includes_error_message(client, db_engine, source_video, tmp_path):
+    """queue_status.error_message is populated from the DB when set."""
+    job_id = _setup_job(client, db_engine, source_video, tmp_path, status="failed")
+
+    with Session(db_engine) as session:
+        job = session.get(Job, job_id)
+        job.error_message = "transcribe: whisper crashed"
+        session.add(job)
+        session.commit()
+
+    resp = client.get(f"/jobs/{job_id}/queue_status")
+    data = resp.json()
+    assert data["current_stage"] == "failed"
+    assert data["error_message"] == "transcribe: whisper crashed"
+
+
+def test_queue_status_404(client, db_engine):
+    """queue_status returns 404 for nonexistent job."""
+    resp = client.get("/jobs/nonexistent/queue_status")
+    assert resp.status_code == 404
+
+
+# ── _job_dict shape tests ───────────────────────────────────────────────────
+
+
+def test_job_dict_includes_all_fields(client, db_engine, source_video, tmp_path):
+    """GET /jobs returns all fields the frontend Job interface expects."""
+    job_id = _setup_job(client, db_engine, source_video, tmp_path)
+    resp = client.get("/jobs")
+    entry = resp.json()[0]
+
+    assert "job_id" in entry
+    assert "source_filename" in entry
+    assert "status" in entry
+    assert "created_at" in entry
+    assert "updated_at" in entry
+    assert "duration_seconds" in entry
+    assert "error_message" in entry
+    assert entry["source_filename"] == "source.mp4"

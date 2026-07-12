@@ -13,8 +13,12 @@
 #   score [job_id]             Score and title all clips (defaults to current job)
 #   run <file>                 Full pipeline: upload -> transcribe -> highlights -> clips
 #   status [job_id]            Show current job/clip state
-#   jobs                       List recent jobs (requires GET /jobs endpoint - see note below)
+#   jobs                       List recent jobs
 #   use <job_id>                Manually set the current job
+#   clean redis                 Flush stale RQ job keys from Redis
+#   clean db                    Drop all jobs from SQLite (recreates empty table)
+#   clean storage               Remove all raw/ and clips/ files
+#   clean all                   All of the above
 #
 # State is stored in .clipos_state (job_id, clip_ids) in the current directory.
 
@@ -218,9 +222,72 @@ cmd_use() {
 }
 
 cmd_jobs() {
-  # NOTE: this requires a GET /jobs listing endpoint that doesn't exist yet.
-  # See the note below the script — worth adding in Phase 7's prompt if useful.
   curl -s "$BASE_URL/jobs" -w "\n%{http_code}\n"
+}
+
+cmd_clean() {
+  local target="${1:-}"
+  if [ -z "$target" ]; then
+    echo "Usage: ./clipos.sh clean {redis|db|storage|all}" >&2
+    exit 1
+  fi
+
+  case "$target" in
+    redis)
+      echo "Flushing stale RQ keys from Redis..."
+      if command -v redis-cli >/dev/null 2>&1; then
+        local keys
+        keys=$(redis-cli KEYS 'rq:job:*' 2>/dev/null | grep -c . || echo 0)
+        redis-cli KEYS 'rq:job:*' 2>/dev/null | xargs -r redis-cli DEL 2>/dev/null || true
+        redis-cli KEYS 'rq:results:*' 2>/dev/null | xargs -r redis-cli DEL 2>/dev/null || true
+        redis-cli DEL rq:failed:default rq:started:default rq:queued:default rq:workers:default 2>/dev/null || true
+        echo "Cleared $keys RQ job keys + registry."
+      else
+        echo "redis-cli not found. Install with: brew install redis" >&2
+        exit 1
+      fi
+      ;;
+
+    db)
+      echo "Dropping all jobs from SQLite..."
+      if [ -f clipos.db ]; then
+        local count
+        count=$(python3 -c "import sqlite3; c=sqlite3.connect('clipos.db'); print(c.execute('SELECT COUNT(*) FROM jobs').fetchone()[0])" 2>/dev/null || echo "?")
+        rm clipos.db
+        echo "Removed clipos.db ($count jobs). A fresh empty DB will be created on next server start."
+      else
+        echo "clipos.db not found — nothing to clean."
+      fi
+      ;;
+
+    storage)
+      echo "Removing all storage files..."
+      local raw_count=0 clip_count=0
+      if [ -d storage/raw ]; then
+        raw_count=$(find storage/raw -type f | wc -l | tr -d ' ')
+        rm -rf storage/raw/*
+      fi
+      if [ -d storage/clips ]; then
+        clip_count=$(find storage/clips -type f | wc -l | tr -d ' ')
+        rm -rf storage/clips/*
+      fi
+      echo "Removed $raw_count raw files + $clip_count clip files."
+      ;;
+
+    all)
+      cmd_clean redis
+      cmd_clean db
+      cmd_clean storage
+      echo ""
+      echo "All clean."
+      ;;
+
+    *)
+      echo "Unknown clean target: $target" >&2
+      echo "Usage: ./clipos.sh clean {redis|db|storage|all}" >&2
+      exit 1
+      ;;
+  esac
 }
 
 # --- dispatch --------------------------------------------------------------
@@ -239,8 +306,9 @@ case "${1:-}" in
   status)     cmd_status "${2:-}" ;;
   use)        cmd_use "$2" ;;
   jobs)       cmd_jobs ;;
+  clean)      cmd_clean "${2:-}" ;;
   *)
-    echo "Usage: ./clipos.sh {upload|transcribe|highlights|clips|reframe|captions|burn|score|run|full|status|use|jobs} [args]"
+    echo "Usage: ./clipos.sh {upload|transcribe|highlights|clips|reframe|captions|burn|score|run|full|status|use|jobs|clean} [args]"
     exit 1
     ;;
 esac
