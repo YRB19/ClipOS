@@ -1,0 +1,58 @@
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --ink: #16161A;
+    --ink-raised: #1F1F26;
+    --paper: #FFFFFE;
+    --muted-color: #94A1B2;
+    --accent: #7F5AF0;
+    --accent-dim: #2A2140;
+    --good: #2CB67D;
+    --line-color: #2A2A35;
+
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.933 0 0);
+    --card: oklch(0.165 0 0);
+    --card-foreground: oklch(0.933 0 0);
+    --popover: oklch(0.165 0 0);
+    --popover-foreground: oklch(0.933 0 0);
+    --primary: oklch(0.55 0.24 285);
+    --primary-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.23 0 0);
+    --secondary-foreground: oklch(0.933 0 0);
+    --muted: oklch(0.23 0 0);
+    --muted-foreground: oklch(0.57 0 0);
+    --accent: oklch(0.55 0.24 285);
+    --accent-foreground: oklch(0.985 0 0);
+    --destructive: oklch(0.577 0.245 27.325);
+    --border: oklch(0.24 0 0);
+    --input: oklch(0.24 0 0);
+    --ring: oklch(0.55 0.24 285);
+    --radius: 0.5rem;
+  }
+
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: "Cabinet Grotesk", ui-sans-serif, system-ui, sans-serif;
+  }
+  .font-mono {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+  }
+}
