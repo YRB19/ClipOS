@@ -38,6 +38,9 @@ Thumbs.db
 # Runtime state
 .clipos_state
 
+# Redis
+*.rdb
+
 # Test artifacts
 MagicMock/
 

@@ -78,6 +78,27 @@ def get_job(job_id: str, session: Session = Depends(get_session)):
     return result
 
 
+# ── GET /jobs/{job_id}/highlights ────────────────────────────────────────────
+
+
+@router.get("/{job_id}/highlights")
+def get_highlights(job_id: str, session: Session = Depends(get_session)):
+    """Return the full highlights data for a job."""
+    job = session.get(Job, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+
+    highlights_path = Path(settings.storage_raw) / job_id / "highlights.json"
+    if not highlights_path.exists():
+        raise HTTPException(status_code=404, detail=f"No highlights data for job {job_id}")
+
+    import json
+    try:
+        return json.loads(highlights_path.read_text())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read highlights: {e}")
+
+
 # ── POST /jobs/{job_id}/run ─────────────────────────────────────────────────
 
 
