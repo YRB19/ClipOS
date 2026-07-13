@@ -1,22 +1,19 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { JobListPage } from "@/pages/JobListPage";
-import { UploadPage } from "@/pages/UploadPage";
-import { ProgressPage } from "@/pages/ProgressPage";
-import { GalleryPage } from "@/pages/GalleryPage";
-import { ClipDetailPage } from "@/pages/ClipDetailPage";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import JobListView from "./components/JobListView";
+import UploadView from "./components/UploadView";
+import JobProgressView from "./components/JobProgressView";
+import ClipGalleryView from "./components/ClipGalleryView";
 
-function App() {
+export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<JobListPage />} />
-        <Route path="/upload" element={<UploadPage />} />
-        <Route path="/jobs/:jobId/progress" element={<ProgressPage />} />
-        <Route path="/jobs/:jobId/clips/:clipId" element={<ClipDetailPage />} />
-        <Route path="/jobs/:jobId" element={<GalleryPage />} />
+        <Route path="/" element={<JobListView />} />
+        <Route path="/upload" element={<UploadView />} />
+        <Route path="/jobs/:jobId" element={<JobProgressView />} />
+        <Route path="/jobs/:jobId/clips" element={<ClipGalleryView />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );
 }
-
-export default App;
