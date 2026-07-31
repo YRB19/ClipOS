@@ -8,9 +8,9 @@ import app.core.openrouter_client as _openrouter
 logger = logging.getLogger(__name__)
 
 DEFAULT_PROVIDER_TIERS = [
-    (_nvidia, "nvidia_chat_completion", "qwen/qwen3.5-397b-a17b"),
+    (_nvidia, "nvidia_chat_completion", "z-ai/glm-5.2"),
     (_nvidia, "nvidia_chat_completion", "mistralai/mistral-nemotron"),
-    (_openrouter, "openrouter_chat_completion", "qwen/qwen3-coder:free"),
+    (_openrouter, "openrouter_chat_completion", "z-ai/glm-5.2:free"),
 ]
 
 
@@ -55,5 +55,6 @@ def call_llm_with_fallback(
             "All LLM providers failed:\n" + "\n".join(errors)
         )
 
+    assert raw_content is not None
     logger.info("LLM served by %s", provider_used)
     return raw_content, provider_used
