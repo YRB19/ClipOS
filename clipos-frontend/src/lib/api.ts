@@ -18,6 +18,10 @@ export interface HighlightClip {
   title: string;
   final_hook_text: string;
   highlight_index: number;
+  hook_text?: string;
+  reasoning?: string;
+  virality_score?: number;
+  evidence?: string;
   available_variants?: string[];
   final_render?: RenderOutput | null;
   processing_status?: string | null;
@@ -35,6 +39,8 @@ export interface QueueStatus {
   run_status?: string | null;
   rq_state?: string;
   cancel_requested?: boolean;
+  analyzed_chunks?: number;
+  total_chunks?: number;
   completed_units?: number;
   total_units?: number;
   completed_clips?: number;
@@ -100,6 +106,12 @@ export const api = {
     }
     return res.json() as Promise<{ job_id: string }>;
   },
+
+  library: () => request<{ configured: boolean; files: string[] }>("/ingest/library"),
+  probeLibrary: (path: string) => request<{ audio_tracks: { stream_index: number; title?: string; codec: string }[] }>("/ingest/local/probe", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path }) }),
+  importLocal: (path: string, audio_stream_index: number | null) => request<{ job_id: string }>("/ingest/local", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path, audio_stream_index }) }),
 
   youtube: (url: string) =>
     request<{ job_id: string }>("/ingest/youtube", {
