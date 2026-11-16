@@ -16,7 +16,7 @@ export function GalleryPage() {
 
     api
       .getHighlights(jobId)
-      .then((data) => { if (!cancelled) setClips(data); })
+      .then((data) => { if (!cancelled) setClips(data.filter((clip) => clip.available_variants === undefined || clip.available_variants.includes("clip_vertical.mp4"))); })
       .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load clips"); })
       .finally(() => { if (!cancelled) setLoading(false); });
 

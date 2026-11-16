@@ -40,6 +40,7 @@ export function JobListPage() {
   }, []);
 
   const getLink = (job: Job) => {
+    if (job.run_status && job.run_status !== "completed") return `/jobs/${job.job_id}/progress`;
     if (job.status === "done" || job.status === "clips_ready") return `/jobs/${job.job_id}`;
     return `/jobs/${job.job_id}/progress`;
   };

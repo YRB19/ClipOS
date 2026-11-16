@@ -14,7 +14,7 @@ export function ClipCard({ clip, jobId }: ClipCardProps) {
   const navigate = useNavigate();
   const [variant, setVariant] = useState<"vertical" | "original">("vertical");
 
-  const verticalUrl = api.videoUrl(jobId, clip.clip_id, "clip_vertical.mp4");
+  const verticalUrl = api.videoUrl(jobId, clip.clip_id, clip.available_variants?.includes("clip_captioned.mp4") ? "clip_captioned.mp4" : "clip_vertical.mp4");
   const originalUrl = api.videoUrl(jobId, clip.clip_id, "clip.mp4");
   const currentUrl = variant === "vertical" ? verticalUrl : originalUrl;
   const score = clip.final_score ?? 0;
