@@ -13,14 +13,16 @@ from sqlmodel import Session
 # the output schema is identical either way so nothing downstream breaks.
 
 _model = None
+_model_name = None
 
 
 def _get_model():
     """Load faster-whisper model once at module level, reuse across calls."""
-    global _model
-    if _model is None:
+    global _model, _model_name
+    if _model is None or _model_name != settings.asr_model:
         from faster_whisper import WhisperModel
-        _model = WhisperModel("base", device="cpu", compute_type="int8")
+        _model = WhisperModel(settings.asr_model, device="cpu", compute_type="int8")
+        _model_name = settings.asr_model
     return _model
 
 
@@ -45,7 +47,7 @@ def _call_whisper_asr(audio_path: str) -> list[dict]:
     Returns list of {"word": str, "start": float, "end": float}.
     """
     model = _get_model()
-    segments, _ = model.transcribe(audio_path, word_timestamps=True)
+    segments, _ = model.transcribe(audio_path, word_timestamps=True, vad_filter=settings.asr_vad)
 
     words = []
     for segment in segments:
@@ -63,7 +65,9 @@ def _call_whisper_asr(audio_path: str) -> list[dict]:
 def transcribe_video(job_id: str) -> list[dict]:
     """Full transcription pipeline: extract audio → Whisper → save transcript.json → update DB."""
     raw_dir = Path(settings.storage_raw) / job_id
-    video_path = raw_dir / "source.mp4"
+    with Session(engine) as session:
+        job = session.get(Job, job_id)
+        video_path = Path(job.video_path) if job else raw_dir / "source.mp4"
     audio_path = raw_dir / "audio.wav"
     transcript_path = raw_dir / "transcript.json"
 

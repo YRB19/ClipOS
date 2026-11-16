@@ -87,13 +87,11 @@ def score_and_title_clips(job_id: str) -> list[dict]:
         raise ValueError(f"highlights.json is empty for job {job_id}")
 
     transcript = json.loads(transcript_path.read_text())
-    if not transcript:
-        raise ValueError(f"transcript.json is empty for job {job_id}")
 
     # Build batched prompt: each candidate with its spoken text
     candidate_blocks = []
     for h in highlights:
-        clip_text = _extract_clip_text(transcript, h["start"], h["end"])
+        clip_text = _extract_clip_text(transcript, h["start"], h["end"])[:max(100, settings.analysis_max_chars // len(highlights) - 600)]
         candidate_blocks.append(
             f'clip_id: {h["clip_id"]}\n'
             f'timestamps: {h["start"]:.1f}s - {h["end"]:.1f}s\n'
@@ -114,13 +112,14 @@ def score_and_title_clips(job_id: str) -> list[dict]:
         {"role": "user", "content": user_content},
     ]
 
-    raw_content, _provider_used = call_llm_with_fallback(
-        messages=messages,
-        temperature=0.3,
-        max_tokens=4096,
-    )
-
-    scoring_results = _parse_scoring_response(raw_content)
+    if transcript:
+        raw_content, _provider_used = call_llm_with_fallback(
+            messages=messages, temperature=0.3, max_tokens=4096)
+        scoring_results = _parse_scoring_response(raw_content)
+    else:
+        scoring_results = [dict(clip_id=h['clip_id'], title=h['hook_text'],
+                               final_hook_text=h['hook_text'], final_score=h['virality_score'],
+                               rank_reasoning=h['reasoning']) for h in highlights]
 
     # Index LLM results by clip_id for merging
     scoring_by_id = {r["clip_id"]: r for r in scoring_results if "clip_id" in r}

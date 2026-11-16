@@ -172,3 +172,49 @@ an automatic run is active.
   aspect format and A/V duration alignment, then promote atomically. Version 1
   rejects HDR and rotated final inputs until their deliberate conversion presets
   are implemented; do not silently mislabel those outputs as supported SDR.
+
+## Phase 4 long-source additions — 2026-11-16
+
+- Migrations 4/5 add `source_imports` (durable remote URL/import state and optional
+  ASR audio-stream override) and nullable `clip_edits.generated_signature`.
+  `jobs.source_type` additionally supports `local`. Preserve original containers,
+  stream indexes and codecs; use `Job.video_path`, not a hardcoded source.mp4.
+- Automatic work is download (remote only) → bounded navigation sample → repeated
+  transcribe_chunk/highlights_chunk → early per-candidate recipe/render → final
+  scoring. Chunk indexes use the existing attempt clip_id slot only for those two
+  stage names; never create ClipState records or apply per-clip failure isolation
+  to analysis chunks. A chunk failure stops the run and successful chunks survive.
+- `core/chunks.py` owns chunk windows, identities, atomic JSON/digest checkpoints,
+  absolute word offsets, overlap deduplication, incremental canonical aggregates
+  and candidate count/duration budgets. Empty transcript/selection arrays can be
+  valid successful checkpoints. Dense speech splits into bounded prompts without
+  dropping words. ASR uses VAD with the adapter's restored original timestamps.
+- Prefer a track titled microphone/mic/voice/commentary for ASR; allow an explicit
+  global audio stream index. Pad delayed tracks before ASR, preserving source
+  silence. Keep source tracks distinct; final recipe audio selection remains
+  separate from the ASR choice. For explicitly named game/desktop plus microphone
+  tracks, default exports mix game at 0.5 gain with microphone at 1.0; unnamed or
+  composite sources retain their first-track mix.
+- Silent chunks receive explicitly unassessed, zero-score visual candidates.
+  This is eligibility, not evidence of a strong moment; visual assessment stays
+  in Phase 5. Do not infer clip quality from an empty transcript.
+- Cache keys include source fingerprint, track, window, ASR model/VAD/version;
+  selection adds transcript digest, prompt/providers/version and budgets. Recipe
+  validity uses only transcript words overlapping that clip. Automatically created
+  edits may refresh changed inputs; any explicit save clears the automatic marker
+  and protects human edits. Pre-migration revisions are also protected.
+- Local import resolves inside configured MEDIA_ROOT and rejects symlink escapes.
+  Remote requests persist a job/run before enqueue; downloads have bounded time,
+  playlist and source-size limits. Failed imports remain visible/resumable.
+- Navigation proxy/waveform coverage is explicitly bounded (default first 60s),
+  with source duration recorded separately. Do not present it as a full timeline
+  proxy. Browser-compatible previews are derived without changing the original.
+- `GET /storage/cache` plans cleanup; `POST /storage/cache/cleanup` explicitly
+  removes only inactive raw chunks/navigation assets under SQLite's write lock.
+  Never delete originals, canonical aggregates, edit history or render outputs.
+  CACHE_MAX_GB stops further cache work when exceeded (one bounded unit may cross
+  the limit); it is not a quota on originals/final exports. No automatic eviction.
+- Gallery and early clip details poll as work continues. An unrendered candidate
+  shows its hook/reason/status without a video/download URL. Manual review remains
+  optional. Real multi-hour inference/quality and the 20-minute target remain
+  separate validation milestones; synthetic scheduling is not a benchmark.

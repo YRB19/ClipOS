@@ -42,7 +42,7 @@ def get_video_metadata(path: str) -> dict:
         "audio_tracks": [{"stream_index": stream["index"], "codec": stream.get("codec_name"),
                           "channels": stream.get("channels"), "sample_rate": stream.get("sample_rate"),
                           "channel_layout": stream.get("channel_layout"),
-                          "title": stream.get("tags", {}).get("title"),
+                          "title": stream.get("tags", {}).get("title") or stream.get("tags", {}).get("handler_name"),
                           "language": stream.get("tags", {}).get("language"),
                           "start_time": stream.get("start_time"), "duration": stream.get("duration")}
                          for stream in streams if stream.get("codec_type") == "audio"],

@@ -16,7 +16,9 @@ logger = logging.getLogger(__name__)
 def cut_clip(job_id: str, clip_id: str) -> dict:
     """Cut a single candidate. Raise failures so the queue can account for them."""
     raw_dir = Path(settings.storage_raw) / job_id
-    source_path = raw_dir / 'source.mp4'
+    with Session(engine) as session:
+        job = session.get(Job, job_id)
+        source_path = Path(job.video_path) if job else raw_dir / 'source.mp4'
     highlights_path = raw_dir / 'highlights.json'
     highlights = json.loads(highlights_path.read_text())
     candidate = next(h for h in highlights if h['clip_id'] == clip_id)

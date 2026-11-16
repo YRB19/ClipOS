@@ -25,6 +25,7 @@ class ClipEdit(SQLModel, table=True):
     clip_id: str
     revision: int
     revision_id: str
+    generated_signature: str | None = None
     updated_at: datetime = Field(default_factory=now)
 
 

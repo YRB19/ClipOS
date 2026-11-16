@@ -248,3 +248,75 @@ Implementation checked the official [FFmpeg filter documentation](https://ffmpeg
 and [FFmpeg command/stream documentation](https://ffmpeg.org/ffmpeg.html), then
 validated the installed binary's actual output with fixtures rather than inferring
 media correctness from mocked command calls.
+
+
+## Phase 4 implementation decisions — 2026-11-16
+
+**Status: implemented; fixture/integration validated; representative-stream
+acceptance pending.** The user requested the next phase after Phase 2. This
+package follows the accepted 1 → 2 → 4 → 5 → 6 order and stops before Phase 5.
+The target remains a three-hour gaming stream → roughly ten strong upload-ready
+clips in about twenty minutes, not a measured result.
+
+| ID | Status | Decision and rationale |
+| --- | --- | --- |
+| INGEST-002 | Implemented | Accept original MP4/MKV/MOV/WebM/M4V uploads and local references within configured MEDIA_ROOT. Resolve symlinks inside the root, probe available tracks, and preserve originals/stream indexes. Remote YouTube requests return a durable job ID with HTTP 202, then run download as a normal fenced RQ stage with timeout, playlist and per-source-size bounds. Failures/loss remain visible and resumable. |
+| ASR-002 | Implemented | Prefer named microphone/voice/commentary streams, including MP4 handler labels; allow an explicit stream override. Apply VAD through faster-whisper, pad delayed audio and add extraction offsets to restored word timestamps. Preserve separate tracks for export; explicitly named game/desktop plus mic defaults mix game at 0.5 gain and voice at 1.0. Unnamed/composite sources retain their first-track mix. |
+| LONG-001 | Implemented | Replace whole-source automatic ASR/selection with overlapping, separately bounded RQ chunks (default 300s core, 15s context each side). Persist versioned, digest-verified JSON checkpoints, including empty results. Merge absolute words with overlap ownership/deduplication and keep boundary padding available to early captions. Split dense text into overlapping bounded prompts. Successful chunks survive cancellation/worker loss and missing aggregates can be reconstructed without repeating inference. Fingerprinting stays in the worker before chunk expansion. |
+| SELECT-002 | Implemented foundation; visual quality pending Phase 5 | Publish candidates after each analysis chunk with stable source/cache/range-derived IDs, overlap deduplication and configurable count/individual/total duration budgets (10, 15–90s, 600s defaults). Silent chunks retain explicit zero-score, unassessed visual eligibility; this does not claim a detected highlight. Early candidates can render before later sections are analyzed; later selection may replace them while prior output history remains. |
+| CACHE-001 | Implemented | Key ASR by source fingerprint, selected stream, time window, adapter/model/VAD settings; key selection additionally by transcript digest, prompt/provider/version and budgets. Selection changes reuse ASR. CACHE_MAX_GB guards derived chunk/navigation storage, with explicit planned cleanup of inactive cache only under SQLite's write lock. Sources, canonical aggregates, edit revisions and exports are outside deletion scope. Active runs/renders are protected. Source-size limits are per upload/download; no total-library quota or automatic eviction is claimed. |
+| RECIPE-002 | Implemented; extends RECIPE-001 | Invalidate a clip only for overlapping transcript words and its own selection/source inputs. Mark generated recipe heads so changed boundary captions can refresh automatically. Explicit saves clear the marker; human corrections and pre-migration revisions remain protected, and historical revisions stay immutable. Migrations 4/5 add import options and the nullable generation marker without rewriting job fields. |
+| MEDIA-004 | Implemented; supersedes full-source initial navigation work | Prepare only the initial configurable navigation sample (60s default), including browser-compatible proxy and waveform; expose coverage separately from full source duration. Full-source hashing/probing and final direct-source rendering remain. This removes a whole-stream proxy encode from the time-to-first-candidate path. A complete timeline proxy/editor remains optional later work. |
+| UX-002 | Implemented | Add local-library/track controls and chunk progress. Gallery and early details refresh as sections arrive, showing hooks/reasons/status before rendering. Hide unavailable video/download/burn actions. Remote ingestion navigates directly to durable progress; automatic processing requires no review step. |
+
+**Affected files:** new backend `core/chunks.py`, `core/imports.py`, `core/cache.py`,
+`models/source_import.py`, `routers/storage.py` and `tests/test_chunks.py`; settings/
+.env example, migrations 4/5, ffprobe track labels, original-path legacy cutting/
+transcription, assets, recipe heads/default mixes, scoring, pipeline/queue/
+reconciliation, ingest/jobs/edit routes and main registration. Frontend local
+import form, API types, progress, gallery/card/details and long-recording tests;
+SKILL.md, backend README and these two documentation mirrors. No dependencies
+were added. No deliberate live service restart or working-library migration was
+performed during verification.
+
+**Validation:** backend and frontend suites, production build/lint and whitespace
+checks are recorded in the matching phase checkpoint. Real FFmpeg fixtures cover
+MKV multiple audio tracks, MP4 handler labels, selected microphone extraction,
+boundary-word deduplication, delayed-source silence, immutable source bytes and
+actual direct-source final rendering. Mocked providers cover bounded dense prompts,
+invalid timestamps, stable candidate identity, overlap/count/duration selection,
+cache invalidation, silent ASR and failed/successful queued downloads. A synthetic
+three-hour timeline exercises 36 persisted five-minute ASR/selection units,
+early recipe/render scheduling, cancellation and resume without repeating successful
+sections. This uses mocked inference/encoders/queue transport and is not a real-time
+factor or quality benchmark. Existing private Redis/RQ failure/render regressions
+also run. Explicit cleanup tests protect active jobs, original media and saved edit
+history. Recipe tests refresh affected automatic captions and preserve human edits.
+
+Migrations 4/5 were applied twice to a backup copy of the default library, preserving
+all **13** jobs/field values. A version-4 fixture without the generation marker also
+upgrades repeatedly while preserving existing edits as protected. Backup:
+`/var/folders/rp/qnp030cn1nzflxjc7gw9xmnr0000gp/T/clipos-phase4-migration-skcymstj/library-backup.db`.
+
+**Remaining validation / limitations:** the current library has 11 available
+sources, the longest about 1,142 seconds, and no 2–4-hour source. A representative
+stream therefore has not been processed or reviewed. Real VAD/ASR accuracy,
+selection/pacing, total memory/disk/API costs and end-to-end latency remain to be
+measured. Initial source hashing is full-source work. Early renders may be replaced
+by later candidates; rank-before-high-quality-render work remains Phase 5. Derived
+cache limits can be crossed by one bounded unit before stopping; inactive cleanup
+is explicit, original/export storage is user managed, and download fragments are
+retained for resume. Full timeline navigation is not supplied by the initial sample.
+Silent candidates have no visual assessment yet. Existing RQ/macOS fork and
+nonfatal frontend CSS/lint warnings remain Phase 6/existing cleanup work. No twenty-
+minute claim is made. Stop here; next authorized package is Phase 5.
+
+
+**Final verification addendum — 2026-11-16, implemented:** cache cleanup also
+retains database-referenced originals and exports if a user imports/stores them
+inside a cache directory. This closes a nested-path deletion risk without adding
+a permission step or automatic eviction. Affected: `core/cache.py` and its source-
+retention fixture. All 10 chunk/import/cache tests passed after this last guard;
+the full 123-test backend suite and 12-test frontend suite, build/lint and
+whitespace checks passed for the phase. Obsidian/repository copies were verified
+identical after appending. Phase 5 remains untouched.

@@ -71,6 +71,12 @@ def reconcile(run_id, db_engine=None):
                 if attempt:
                     attempt.status, attempt.error_message, attempt.finished_at = 'failed', message, now()
                     session.add(attempt)
+                if attempt and attempt.stage == 'download':
+                    from app.models.source_import import SourceImport
+                    request = session.get(SourceImport, run.job_id)
+                    if request:
+                        request.status, request.error_message = 'failed', message
+                        session.add(request)
                 if attempt and attempt.stage == 'assets':
                     from app.models.edit import SourceAsset
                     asset = session.get(SourceAsset, run.job_id)
@@ -90,7 +96,7 @@ def snapshot(session, job):
                     error_message=job.error_message, started_at=None, finished_at=None,
                     run_status=None, stages=[], clips=[], completed_units=0, total_units=0)
     attempts = _attempts(session, job.job_id)
-    plan = _plan(job.job_id, attempts)
+    plan = _plan(job.job_id, attempts, session.get_bind())
     latest = {}
     for a in attempts:
         latest.setdefault(a.unit_key, a)
@@ -101,7 +107,7 @@ def snapshot(session, job):
             stages.append(dict(stage=a.stage, clip_id=a.clip_id, status=a.status,
                                rq_task_id=a.rq_task_id, elapsed_seconds=a.elapsed_seconds,
                                error_message=a.error_message))
-    candidate_ids = {clip_id for _, clip_id in plan if clip_id}
+    candidate_ids = {clip_id for stage, clip_id in plan if clip_id and not stage.endswith('_chunk')}
     clips = [c for c in session.exec(select(ClipState).where(ClipState.job_id == job.job_id)).all()
              if c.clip_id in candidate_ids]
     try:
@@ -113,6 +119,9 @@ def snapshot(session, job):
                 rq_job_id=run.current_task_id, error_message=run.error_message or job.error_message,
                 cancel_requested=run.cancel_requested, started_at=run.created_at,
                 heartbeat_at=run.heartbeat_at, finished_at=run.finished_at,
+                analyzed_chunks=sum(_valid(latest[_key(s, c)]) for s, c in plan
+                                    if s == 'highlights_chunk' and _key(s, c) in latest),
+                total_chunks=sum(s == 'highlights_chunk' for s, _ in plan),
                 completed_units=completed, total_units=len(plan), stages=stages,
                 completed_clips=sum(c.status == 'completed' for c in clips),
                 failed_clips=sum(c.status == 'failed' for c in clips), clips=[c.model_dump() for c in clips])

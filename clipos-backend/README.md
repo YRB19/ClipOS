@@ -269,3 +269,73 @@ sample aspect format, audio presence and A/V duration alignment before promotion
 A changed source cannot publish a result under its previous identity. `/files/raw`
 and `/files/clips` serve their configured roots independently, preserving existing
 media URLs and supporting byte-range playback of the new immutable outputs.
+
+### Phase 4: long recordings and incremental results
+
+Automatic jobs now use five-minute ASR/selection sections with 15-second context
+on each side. Each section is a separately timed RQ task with an atomic, validated
+checkpoint. Cancel stops at a unit boundary; `/resume` reuses completed sections.
+Transcript words remain in absolute source seconds. VAD and delayed-track padding
+preserve silence offsets; overlaps are deduplicated. Empty speech is a valid
+checkpoint, with explicitly unassessed visual candidates left eligible for Phase 5.
+Dense speech is split into overlapping, bounded text prompts. Defaults cap the
+current selection at 10 candidates, 15–90 seconds each and 600 seconds total.
+Selection can change as later sections arrive; earlier render history is retained.
+This phase does not establish candidate quality or real-stream throughput.
+
+Uploads accept MP4/MKV/MOV/WebM/M4V and preserve their containers. Set `MEDIA_ROOT`
+in `.env` to enable the **Local library** upload tab. Imports reference the original
+file; keep it available at that path. Files and symlinks must resolve inside the
+configured root. The local form probes tracks and lets you choose a microphone;
+automatic ASR prefers mic/voice/commentary track titles, then the first audio track.
+An explicit choice is also available through `PUT /jobs/{id}/audio-track` while
+idle. Final mixes stay separate: explicitly named game/desktop plus mic tracks
+mix at 0.5/1.0 gain; other sources retain the first-track mix. Edit recipes can
+select individual source tracks and gains without modifying the originals.
+
+`POST /ingest/youtube` returns HTTP 202 and a durable job ID immediately. It queues
+the download and subsequent pipeline; callers can navigate straight to progress.
+Repeated `/run` calls remain idempotent. Download errors, dispatch failures and
+worker loss stay visible and resumable. Downloads exclude playlists, preserve
+codecs in MKV, and have time/source-size bounds. API and workers need restarting
+to activate this code and additive migrations 4/5; old saved edits are protected.
+
+The initial navigation proxy/waveform covers **the first 60 seconds**, with
+`coverage_seconds` and full source duration reported separately. Final clips read
+the full original. This bounded browser-compatible sample avoids transcoding the
+whole recording before the first candidate. A full timeline editor is still
+optional Phase 3. The gallery and candidate details refresh during processing;
+unrendered candidates expose their hook/reason without broken download links.
+Manual review is optional.
+
+| Endpoint | Behavior |
+| --- | --- |
+| `GET /ingest/library` | Up to 1,000 eligible paths inside configured MEDIA_ROOT |
+| `POST /ingest/local/probe` | `{path}` → metadata and audio streams |
+| `POST /ingest/local` | `{path, audio_stream_index?}` → imported job ID |
+| `PUT /jobs/{id}/audio-track` | `{audio_stream_index: number or null}`; idle override |
+| `GET /storage/cache` | Cache size, protection and proposed removals; read only |
+| `POST /storage/cache/cleanup` | Explicitly remove inactive derived cache toward configured budget |
+
+Cache identity covers source SHA-256, audio stream, time windows, ASR model/VAD
+and adapter version; selection adds transcript digest, prompt/providers/version
+and relevant budgets. A selection-setting change reuses ASR. Clip dependencies
+include only words overlapping that clip. Automatic recipes refresh changed inputs;
+any explicit edit save protects that edit from automatic replacement, as do
+pre-migration revisions. Historical renders/revisions remain immutable.
+
+`CACHE_MAX_GB` (20 by default) covers raw `chunks` and `assets` directories. Work
+stops with an actionable error if it exceeds the budget; one bounded unit can
+cross the limit. Cleanup takes SQLite's write lock and protects active jobs/renders.
+It never removes sources, canonical transcripts/highlights, saved edits or final
+exports. It does not impose a total-library quota or run automatic eviction.
+`MAX_SOURCE_GB` (100) limits each upload/download. Failed download fragments remain
+resumable and are not automatically deleted. Review disk usage and remove unwanted
+sources/exports explicitly outside this derived-cache cleanup.
+
+See `.env.example` for chunk, VAD/model, text, clip/count/duration, navigation,
+cache/source-size and download deadline settings. No dependencies were added.
+A synthetic three-hour scheduling test verifies stop/resume and early results;
+a representative 2–4-hour recording and measured end-to-end latency/clip quality
+remain outstanding. The local library currently has no recording in that duration
+range, so the ~20-minute product target is still unverified.

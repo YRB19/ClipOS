@@ -54,7 +54,10 @@ def get_assets(job_id: str, session: Session = Depends(get_session)):
         path = Path(item['path'])
         if path.is_file() and artifact_stamp(path) == item['signature']:
             urls[name] = '/files/raw/' + path.relative_to(Path(settings.storage_raw).resolve()).as_posix()
+    from app.core.chunks import selected_track
     return dict(status='stale' if asset.status == 'ready' and not assets_valid(asset) else asset.status, fingerprint=asset.fingerprint, metadata=json.loads(asset.metadata_json),
+                asr_stream_index=selected_track(asset, session.get_bind()),
+                coverage_seconds=json.loads(asset.artifacts_json).get('coverage_seconds'),
                 artifacts=urls, error_message=asset.error_message)
 
 

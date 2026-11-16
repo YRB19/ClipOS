@@ -18,7 +18,7 @@ from app.models.job import Job, engine
 from app.models.edit import SourceAsset
 from app.models.execution import now
 
-ASSET_VERSION = 'navigation-v1'
+ASSET_VERSION = 'navigation-v2'
 
 
 def ensure_source(job_id, db_engine=None):
@@ -79,7 +79,7 @@ def artifact_stamp(path):
 def assets_valid(asset):
     try:
         artifacts = json.loads(asset.artifacts_json)
-        return asset.status == 'ready' and artifacts['version'] == ASSET_VERSION and all(
+        return asset.status == 'ready' and artifacts['version'] == ASSET_VERSION and artifacts.get('coverage_seconds') == min(settings.navigation_seconds, json.loads(asset.metadata_json)['duration']) and all(
             artifact_stamp(item['path']) == item['signature']
             for item in artifacts['files'].values()) and len(artifacts['files']) == 3
     except (OSError, KeyError, ValueError, TypeError):
@@ -88,12 +88,15 @@ def assets_valid(asset):
 
 def prepare_assets(job_id, db_engine=None):
     db_engine = db_engine or engine
+    from app.core.cache import ensure_cache_capacity
+    ensure_cache_capacity(db_engine)
     asset = ensure_source(job_id, db_engine)
     if assets_valid(asset):
         return json.loads(asset.artifacts_json)
     folder = Path(settings.storage_raw)/job_id/'assets'/asset.fingerprint/ASSET_VERSION
     folder.mkdir(parents=True, exist_ok=True)
     meta = json.loads(asset.metadata_json)
+    coverage = min(settings.navigation_seconds, meta['duration'])
     def run(args):
         return subprocess.run([ffmpeg(), '-y', '-v', 'error', *args], check=True,
                               capture_output=True, timeout=settings.media_timeout_seconds)
@@ -107,7 +110,7 @@ def prepare_assets(job_id, db_engine=None):
         with tempfile.TemporaryDirectory(dir=folder) as temporary:
             temp = Path(temporary)
             proxy = temp/'proxy.mp4'
-            args = ['-i', asset.source_path, '-map', f"0:{meta['video_stream_index']}"]
+            args = ['-i', asset.source_path, '-t', str(coverage), '-map', f"0:{meta['video_stream_index']}"]
             if meta['audio_tracks']:
                 args += ['-map', f"0:{meta['audio_tracks'][0]['stream_index']}"]
             args += ['-vf', 'scale=trunc(iw*sar/2)*2:ih,setsar=1,scale=960:540:force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1',
@@ -121,11 +124,11 @@ def prepare_assets(job_id, db_engine=None):
                  '-map', f"0:{meta['video_stream_index']}", '-frames:v', '1', '-vf', 'scale=trunc(iw*sar/2)*2:ih,setsar=1,scale=480:-2', str(thumb)])
             if not thumb.is_file() or not thumb.stat().st_size:
                 raise ValueError('No thumbnail produced')
-            peaks, interval = [], meta['duration']/6000
+            peaks, interval = [], coverage/6000
             track = meta['audio_tracks'][0]['stream_index'] if meta['audio_tracks'] else None
             if track is not None:
                 audio = temp/'waveform.wav'
-                run(['-i', asset.source_path, '-map', f'0:{track}', '-vn', '-ac', '1', '-ar', '8000',
+                run(['-i', asset.source_path, '-t', str(coverage), '-map', f'0:{track}', '-vn', '-ac', '1', '-ar', '8000',
                      '-c:a', 'pcm_s16le', str(audio)])
                 with wave.open(str(audio), 'rb') as stream:
                     block = max(1, math.ceil(stream.getnframes()/6000))
@@ -134,14 +137,15 @@ def prepare_assets(job_id, db_engine=None):
                         samples = array.array('h', chunk)
                         peaks.append(round(max((abs(n) for n in samples), default=0)/32768, 4))
             write_json(temp/'waveform.json', dict(peaks=peaks, interval_seconds=interval,
-                                                  duration=meta['duration'], stream_index=track))
+                                                  duration=coverage, source_duration=meta['duration'], stream_index=track))
             files = {}
             for name in ('proxy.mp4', 'thumbnail.jpg', 'waveform.json'):
                 destination = folder/name
                 (temp/name).replace(destination)
                 files[name] = dict(path=str(destination.resolve()), signature=artifact_stamp(destination))
         source_unchanged(asset)
-        artifacts = dict(version=ASSET_VERSION, fingerprint=asset.fingerprint, files=files)
+        artifacts = dict(version=ASSET_VERSION, fingerprint=asset.fingerprint, files=files,
+                         coverage_seconds=coverage, source_duration=meta['duration'])
         with Session(db_engine) as session:
             current = session.get(SourceAsset, job_id)
             if current.fingerprint != asset.fingerprint:
@@ -150,6 +154,7 @@ def prepare_assets(job_id, db_engine=None):
             current.error_message = None
             session.add(current)
             session.commit()
+        ensure_cache_capacity(db_engine)
         return artifacts
     except Exception as exc:
         with Session(db_engine) as session:

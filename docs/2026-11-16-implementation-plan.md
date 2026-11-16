@@ -281,3 +281,59 @@ final inputs are explicitly unsupported until their planned conversion presets.
 **Next package:** phase 4 — multi-hour source import, microphone/audio selection,
 overlapping chunk analysis, checkpoint/cache identity and incremental candidates.
 Stop here for the user's review. Do not start phase 4 in this implementation turn.
+
+
+## Phase checkpoint — 2026-11-16: Phase 4 implemented; stopped for review
+
+**Status: implementation and fixture acceptance delivered; representative-stream
+acceptance pending.** The user authorized starting the next phase after Phase 2.
+Phase 4 adds original-preserving library/MKV imports, queued remote downloads,
+microphone selection, VAD and absolute timestamps, overlapping transcription/
+selection chunks with durable caches, early candidates/rendering and explicit
+storage maintenance. See INGEST-002, ASR-002, LONG-001, SELECT-002, CACHE-001,
+RECIPE-002, MEDIA-004 and UX-002 in [[2026-11-16-architecture-review]].
+
+Automatic execution now runs download (remote only) → bounded navigation sample →
+repeated ASR/selection chunks and early candidate recipe/render units → final
+scoring. Successful chunks are reused on resume; settings have separate ASR and
+selection identities. Missing/corrupt canonical aggregates can be recovered from
+valid chunks. Clip dependencies use their own words. Automatic captions can refresh
+when boundary text changes while explicit human edits stay protected. The gallery
+and details update during processing without requiring a manual review step.
+
+Validation: **123 backend tests and 12 frontend tests passed**, production build,
+lint (existing warnings) and whitespace checks passed. Real FFmpeg fixtures verify
+MKV/MP4 track naming, microphone extraction, delayed audio, boundary timestamps,
+source preservation and final rendering. A synthetic three-hour/36-section
+scheduling test cancels/resumes without repeating successful ASR/selection units
+and exposes the first clip before the second section. Inference, encoders and
+queue transport are mocked in that long-timeline test; it is not a throughput or
+clip-quality result. Provider/download failure, digest/cache invalidation,
+count/duration/overlap budgets, protected cleanup and automatic-versus-human edit
+behavior are covered. Migration 4/5 checks preserve all 13 original jobs on a
+backed-up copy; the working library was not migrated for testing. No dependencies
+were added. Restart API/worker to activate the new code/schema; set MEDIA_ROOT to
+enable local-library browsing.
+
+**Acceptance gap:** no representative 2–4-hour recording is currently available
+in the library (11 readable sources; longest ~19 minutes). Full multi-hour ASR/
+selection/render quality, real stop/resume under that workload, resource costs and
+elapsed time remain unvalidated. The initial proxy/waveform is explicitly a 60s
+navigation sample, not a full timeline proxy. Derived cache guards do not impose a
+total quota on originals/exports; cleanup remains explicit and preserves edits.
+M1's representative-stream result and the ~20-minute product target remain open.
+
+**Next package:** Phase 5 — improve moment selection with audio/scene/visual
+signals, rank before high-quality rendering and harden provider/response handling.
+Phase 5 has not started. Stop here for the user's review. Phase 3 remains optional
+manual corrections and Phase 7 optional integrations.
+
+
+**Final verification addendum — 2026-11-16, implemented:** cache cleanup also
+retains database-referenced originals and exports if a user imports/stores them
+inside a cache directory. This closes a nested-path deletion risk without adding
+a permission step or automatic eviction. Affected: `core/cache.py` and its source-
+retention fixture. All 10 chunk/import/cache tests passed after this last guard;
+the full 123-test backend suite and 12-test frontend suite, build/lint and
+whitespace checks passed for the phase. Obsidian/repository copies were verified
+identical after appending. Phase 5 remains untouched.

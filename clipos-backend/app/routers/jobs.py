@@ -80,6 +80,26 @@ def get_job(job_id: str, session: Session = Depends(get_session)):
     return result
 
 
+@router.put('/{job_id}/audio-track')
+def select_audio_track(job_id: str, body: dict, session: Session = Depends(get_session)):
+    from app.routers.execution_guard import require_idle
+    from app.core.ffprobe import get_video_metadata
+    from app.models.source_import import SourceImport
+    require_idle(job_id, session)
+    job = session.get(Job, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail='Job not found')
+    track = body.get('audio_stream_index')
+    metadata = get_video_metadata(job.video_path)
+    if track is not None and (type(track) is not int or track not in [t['stream_index'] for t in metadata['audio_tracks']]):
+        raise HTTPException(status_code=422, detail='Select an available audio stream index or null for automatic')
+    request = session.get(SourceImport, job_id) or SourceImport(job_id=job_id, kind=job.source_type)
+    request.audio_stream_index = track
+    session.add(request)
+    session.commit()
+    return {'audio_stream_index': track}
+
+
 # ── GET /jobs/{job_id}/highlights ────────────────────────────────────────────
 
 
