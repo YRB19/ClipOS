@@ -106,6 +106,7 @@ def transcribed_job_id(client, tiny_mp4, db_engine, tmp_path):
     with patch("app.core.transcribe._get_model", return_value=mock_model):
         with patch("app.core.transcribe.engine", db_engine):
             with patch("app.core.transcribe.settings") as ts:
+                ts.media_timeout_seconds = 900
                 ts.storage_raw = str(tmp_path / "raw")
                 with patch("app.routers.transcribe.settings") as rs:
                     rs.storage_raw = str(tmp_path / "raw")

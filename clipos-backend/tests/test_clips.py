@@ -103,6 +103,8 @@ def test_cut_clips_success(client, db_engine, source_video, tmp_path):
 
     with patch("app.core.clip_cutter.engine", db_engine):
         with patch("app.core.clip_cutter.settings") as mock_settings:
+            mock_settings.storage_clips = str(clips_dir)
+            mock_settings.media_timeout_seconds = 900
             mock_settings.storage_raw = str(tmp_path / "raw") if not Path(f"./storage/raw/{job_id}").exists() else f"./storage/raw/{job_id}/.."
             # Actually, let's use real paths since upload used them
             resp = client.post(f"/jobs/{job_id}/clips")

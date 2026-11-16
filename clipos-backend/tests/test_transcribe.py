@@ -103,6 +103,7 @@ def test_transcribe_success(client, ingested_job_id, db_engine, tmp_path):
     with patch("app.core.transcribe._get_model", return_value=mock_model):
         with patch("app.core.transcribe.engine", db_engine):
             with patch("app.core.transcribe.settings") as mock_transcribe_settings:
+                mock_transcribe_settings.media_timeout_seconds = 900
                 mock_transcribe_settings.storage_raw = str(tmp_path / "raw")
                 with patch("app.routers.transcribe.settings") as mock_router_settings:
                     mock_router_settings.storage_raw = str(tmp_path / "raw")
@@ -149,6 +150,7 @@ def test_transcribe_status_transition(client, ingested_job_id, db_engine, tmp_pa
     with patch("app.core.transcribe._get_model", return_value=mock_model):
         with patch("app.core.transcribe.engine", db_engine):
             with patch("app.core.transcribe.settings") as mock_transcribe_settings:
+                mock_transcribe_settings.media_timeout_seconds = 900
                 mock_transcribe_settings.storage_raw = str(tmp_path / "raw")
                 with patch("app.routers.transcribe.settings") as mock_router_settings:
                     mock_router_settings.storage_raw = str(tmp_path / "raw")
