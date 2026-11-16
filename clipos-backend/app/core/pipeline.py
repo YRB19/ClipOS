@@ -19,7 +19,7 @@ from app.models.job import Job, engine
 from app.models.execution import PipelineRun, StageAttempt, ClipState, now
 
 logger = logging.getLogger(__name__)
-INITIAL_STAGES = ('assets', 'transcribe', 'highlights')
+INITIAL_STAGES = ('assets', 'transcribe_chunk', 'highlights_chunk')
 CLIP_STAGES = ('recipe', 'render')
 
 
@@ -36,9 +36,23 @@ def output_path(job_id, stage, clip_id=None):
 
 
 def signature(job_id, stage, clip_id=None):
+    if stage.endswith('_chunk'):
+        from app.core.chunks import checkpoint_signature
+        return checkpoint_signature(job_id, stage, clip_id, engine)
+    if stage == 'download':
+        with Session(engine) as session:
+            job = session.get(Job, job_id)
+            path = Path(job.video_path)
+        return _media_signature(str(path), path.stat().st_size, path.stat().st_mtime_ns, 'download')
     if stage == 'assets':
-        from app.core.assets import ensure_source, assets_valid
-        asset = ensure_source(job_id, engine)
+        from app.core.assets import assets_valid, source_unchanged
+        from app.models.edit import SourceAsset
+        with Session(engine) as session:
+            asset = session.get(SourceAsset, job_id)
+            job = session.get(Job, job_id)
+            if not asset or asset.source_path != str(Path(job.video_path).resolve()):
+                raise ValueError('Source assets are missing or changed')
+            source_unchanged(asset)
         if not assets_valid(asset):
             raise ValueError('Navigation assets are incomplete')
         return hashlib.sha256((asset.fingerprint+asset.artifacts_json).encode()).hexdigest()
@@ -58,7 +72,7 @@ def signature(job_id, stage, clip_id=None):
     path = output_path(job_id, stage, clip_id)
     if path.suffix == '.json':
         data = json.loads(path.read_text())
-        if not isinstance(data, list) or not data:
+        if not isinstance(data, list) or (not data and stage not in ('transcribe', 'highlights', 'score')):
             raise ValueError(f'Empty or invalid {path.name}')
         if stage == 'transcribe':
             for word in data:
@@ -93,9 +107,18 @@ def _media_signature(path, size, mtime, stage):
 
 
 def input_signature(job_id, stage, clip_id=None):
-    source = Path(settings.storage_raw) / job_id / 'source.mp4'
+    if stage.endswith('_chunk'):
+        from app.core.chunks import context
+        return context(job_id, stage, clip_id, engine)[2]
+    if stage == 'download':
+        from app.models.source_import import SourceImport
+        with Session(engine) as session:
+            return hashlib.sha256(session.get(SourceImport, job_id).url.encode()).hexdigest()
+    with Session(engine) as session:
+        job = session.get(Job, job_id)
+        source = Path(job.video_path)
     stat = source.stat()
-    source_id = f'{stat.st_size}:{stat.st_mtime_ns}'
+    source_id = f'{source.resolve()}:{stat.st_size}:{stat.st_mtime_ns}'
     if stage in ('assets', 'transcribe'):
         return source_id
     if stage == 'highlights':
@@ -106,7 +129,10 @@ def input_signature(job_id, stage, clip_id=None):
                         if clip_id is None or h['clip_id'] == clip_id)
         inputs = [source_id, ranges]
         if stage in ('captions', 'score', 'recipe'):
-            inputs.append(signature(job_id, 'transcribe'))
+            words = json.loads(output_path(job_id, 'transcribe').read_text())
+            if clip_id:
+                words = [w for w in words if any(w['end'] > start and w['start'] < end for _, start, end in ranges)]
+            inputs.append(words)
         return hashlib.sha256(json.dumps(inputs).encode()).hexdigest()
     if stage == 'render':
         from app.core.renderer import RENDERER_VERSION
@@ -126,7 +152,36 @@ def _valid(attempt):
         return False
 
 
-def _plan(job_id, attempts):
+def _plan(job_id, attempts, db_engine=None):
+    db_engine = db_engine or engine
+    if 'transcribe_chunk' in INITIAL_STAGES:
+        from app.core.chunks import windows, load
+        from app.models.source_import import SourceImport
+        with Session(db_engine) as session:
+            job = session.get(Job, job_id)
+            request = session.get(SourceImport, job_id)
+            remote = request and request.kind == 'remote'
+        units = [('download', None)] if remote else []
+        if not job.video_path:
+            return units
+        units.append(('assets', None))
+        latest_assets = next((a for a in attempts if a.stage == 'assets'), None)
+        # Fingerprinting/probing stay in the worker, never the initial /run request.
+        if not latest_assets or not _valid(latest_assets):
+            return units
+        path = Path(settings.storage_raw)/job_id/'highlights.json'
+        candidates = json.loads(path.read_text()) if path.exists() else []
+        for window in windows(job.duration_seconds):
+            index = str(window['index'])
+            units.extend([('transcribe_chunk', index), ('highlights_chunk', index)])
+            verified = load(job_id, 'highlights_chunk', index, db_engine)
+            ids = {h['clip_id'] for h in verified or []}
+            for h in candidates:
+                if h['clip_id'] in ids:
+                    units.extend((stage, h['clip_id']) for stage in CLIP_STAGES)
+        if candidates:
+            units.append(('score', None))
+        return units
     units = [(stage, None) for stage in INITIAL_STAGES]
     # Only expand candidates after a verified detection checkpoint. Artifacts from
     # a legacy/manual run are preserved but never silently treated as verified.
@@ -137,6 +192,20 @@ def _plan(job_id, attempts):
             units.extend((stage, h['clip_id']) for stage in CLIP_STAGES)
         units.append(('score', None))
     return units
+
+
+def _restore_aggregates(job_id, db_engine):
+    """Missing/corrupt aggregates can be rebuilt without repeating valid inference."""
+    from app.core.chunks import assemble_transcript, assemble_candidates
+    for filename, assemble, required in (
+        ('transcript.json', assemble_transcript, {'word', 'start', 'end'}),
+        ('highlights.json', assemble_candidates, {'clip_id', 'start', 'end'})):
+        try:
+            data = json.loads((Path(settings.storage_raw)/job_id/filename).read_text())
+            if not isinstance(data, list) or any(not isinstance(item, dict) or not required.issubset(item) for item in data):
+                raise ValueError('Invalid aggregate')
+        except (OSError, ValueError):
+            assemble(job_id, db_engine)
 
 
 def _key(stage, clip_id):
@@ -151,6 +220,12 @@ def _finish(session, run, status, message=None):
     job.error_message, job.updated_at = message, now()
     session.add(job)
     session.add(run)
+    if run.current_stage == 'download' and status in ('failed', 'cancelled'):
+        from app.models.source_import import SourceImport
+        request = session.get(SourceImport, run.job_id)
+        if request:
+            request.status, request.error_message = status, message
+            session.add(request)
 
 
 def claim_run(job_id, db_engine=None):
@@ -187,10 +262,14 @@ def dispatch_next(run_id, db_engine=None):
             session.commit()
             return
         attempts = _attempts(session, run.job_id)
+        if 'transcribe_chunk' in INITIAL_STAGES and any(a.stage.endswith('_chunk') and a.status == 'completed' for a in attempts):
+            latest_assets = next((a for a in attempts if a.stage == 'assets'), None)
+            if latest_assets and _valid(latest_assets):
+                _restore_aggregates(run.job_id, db_engine)
         failed_clips = {c.clip_id for c in session.exec(select(ClipState).where(
             ClipState.run_id == run_id, ClipState.status == 'failed')).all()}
-        for stage, clip_id in _plan(run.job_id, attempts):
-            if clip_id in failed_clips:
+        for stage, clip_id in _plan(run.job_id, attempts, db_engine):
+            if stage in CLIP_STAGES and clip_id in failed_clips:
                 continue
             unit_key = _key(stage, clip_id)
             matching = [a for a in attempts if a.unit_key == unit_key]
@@ -257,6 +336,12 @@ def _heartbeat(run_id):
 def _execute(attempt):
     # Lazy imports avoid loading inference/video libraries in API processes.
     job_id, clip_id = attempt.job_id, attempt.clip_id
+    if attempt.stage == 'download':
+        from app.core.imports import download_source
+        return download_source(job_id)
+    if attempt.stage.endswith('_chunk'):
+        from app.core.chunks import transcribe_chunk, highlights_chunk
+        return (transcribe_chunk if attempt.stage == 'transcribe_chunk' else highlights_chunk)(job_id, clip_id)
     if attempt.stage == 'assets':
         from app.core.assets import prepare_assets
         return prepare_assets(job_id)
@@ -307,7 +392,8 @@ def _record_result(task_id, error=None, output_signature=None, elapsed=None):
         failures = sum(x.unit_key == a.unit_key and x.run_id == a.run_id and x.status == 'failed'
                        for x in _attempts(session, a.job_id))
         retry = error and _transient(error) and failures < 3
-        if a.clip_id:
+        is_clip = a.clip_id is not None and not a.stage.endswith('_chunk')
+        if is_clip:
             key = f'{a.job_id}:{a.clip_id}'
             clip = session.get(ClipState, key) or ClipState(key=key, job_id=a.job_id, clip_id=a.clip_id, run_id=a.run_id)
             clip.run_id, clip.stage, clip.updated_at = a.run_id, a.stage, now()
@@ -315,14 +401,14 @@ def _record_result(task_id, error=None, output_signature=None, elapsed=None):
             clip.error_message = str(error) if error else None
             session.add(clip)
         run.current_task_id, run.heartbeat_at = None, now()
-        if error and not retry and not a.clip_id:
+        if error and not retry and not is_clip:
             _finish(session, run, 'failed', f'{a.stage}: {error}')
         else:
             run.status = 'retrying' if retry else 'running'
             job = session.get(Job, a.job_id)
             # Core compatibility functions may set status; active execution is
             # authoritative and terminal status is only set by _finish.
-            completed_status = {'assets': 'ingested', 'transcribe': 'transcribed', 'highlights': 'highlights_ready'}
+            completed_status = {'download': 'ingested', 'assets': 'ingested', 'transcribe_chunk': 'transcribed', 'highlights_chunk': 'highlights_ready', 'transcribe': 'transcribed', 'highlights': 'highlights_ready'}
             retry_status = {'assets': 'ingested', 'transcribe': 'ingested', 'highlights': 'transcribed'}
             job.status = (retry_status if error else completed_status).get(a.stage, 'clips_ready')
             job.error_message, job.updated_at = None, now()
