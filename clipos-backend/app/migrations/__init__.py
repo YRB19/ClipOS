@@ -5,6 +5,8 @@ from sqlalchemy import inspect, text
 def migrate(engine):
     from app.models.job import Job
     from app.models.execution import PipelineRun, StageAttempt, ClipState
+    from app.models.edit import SourceAsset, ClipEdit, EditRevision, RenderOutput
+    from app.models.source_import import SourceImport
     with engine.begin() as conn:
         conn.execute(text('CREATE TABLE IF NOT EXISTS schema_migrations '
                           '(version INTEGER PRIMARY KEY, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)'))
@@ -25,3 +27,11 @@ def migrate(engine):
             for model in (PipelineRun, StageAttempt, ClipState):
                 model.__table__.create(conn, checkfirst=True)
             conn.execute(text('INSERT INTO schema_migrations(version) VALUES (2)'))
+
+        if 3 not in versions:
+            for model in (SourceAsset, ClipEdit, EditRevision, RenderOutput):
+                model.__table__.create(conn, checkfirst=True)
+            conn.execute(text('INSERT INTO schema_migrations(version) VALUES (3)'))
+        if 4 not in versions:
+            SourceImport.__table__.create(conn, checkfirst=True)
+            conn.execute(text('INSERT INTO schema_migrations(version) VALUES (4)'))
