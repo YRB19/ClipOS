@@ -6,6 +6,7 @@ from pathlib import Path
 import cv2
 
 from app.config import settings
+from app.core.media import ffmpeg
 from app.core.ffprobe import get_video_metadata
 from app.models.job import Job, engine
 from sqlmodel import Session
@@ -186,7 +187,8 @@ def reframe_clip(job_id: str, clip_id: str) -> str:
     trade-off is smooth panning motion that follows the speaker's face.
     """
     input_path = Path(settings.storage_clips) / job_id / clip_id / "clip.mp4"
-    output_path = Path(settings.storage_clips) / job_id / clip_id / "clip_vertical.mp4"
+    final_path = Path(settings.storage_clips) / job_id / clip_id / "clip_vertical.mp4"
+    output_path = final_path.with_name("clip_vertical.partial.mp4")
 
     if not input_path.exists():
         raise FileNotFoundError(f"No clip.mp4 found at {input_path}")
@@ -242,21 +244,24 @@ def reframe_clip(job_id: str, clip_id: str) -> str:
 
         try:
             cmd = [
-                "ffmpeg", "-y",
+                ffmpeg(), "-y",
                 "-i", str(input_path),
                 "-vf", f"crop={crop_w}:{crop_h}:{crop_x}:0,scale=1080:1920",
                 "-c:v", "libx264", "-preset", "fast",
                 "-c:a", "copy",
                 str(output_path),
             ]
-            subprocess.run(cmd, check=True, capture_output=True, text=True)
+            subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=settings.media_timeout_seconds)
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"ffmpeg reframe failed: {e.stderr}") from e
 
         if not output_path.exists():
             raise RuntimeError("ffmpeg reframe completed but output file not found")
 
-        return str(output_path)
+        if get_video_metadata(str(output_path))["duration"] <= 0:
+            raise RuntimeError("Reframed output has zero duration")
+        output_path.replace(final_path)
+        return str(final_path)
 
     # Dynamic panning path: build time-varying crop expression
     times = _compute_sample_times(len(smoothed), fps)
@@ -265,18 +270,21 @@ def reframe_clip(job_id: str, clip_id: str) -> str:
 
     try:
         cmd = [
-            "ffmpeg", "-y",
+            ffmpeg(), "-y",
             "-i", str(input_path),
             "-vf", f"crop={crop_w}:{crop_h}:x='{crop_x_expr}':y=0,scale=1080:1920",
             "-c:v", "libx264", "-preset", "fast",
             "-c:a", "copy",
             str(output_path),
         ]
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
+        subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=settings.media_timeout_seconds)
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"ffmpeg reframe failed: {e.stderr}") from e
 
     if not output_path.exists():
         raise RuntimeError("ffmpeg reframe completed but output file not found")
 
-    return str(output_path)
+    if get_video_metadata(str(output_path))["duration"] <= 0:
+        raise RuntimeError("Reframed output has zero duration")
+    output_path.replace(final_path)
+    return str(final_path)

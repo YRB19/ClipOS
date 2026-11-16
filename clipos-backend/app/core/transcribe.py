@@ -3,6 +3,8 @@ import subprocess
 from pathlib import Path
 
 from app.config import settings
+from app.core.artifacts import write_json
+from app.core.media import ffmpeg
 from app.models.job import Job, engine
 from sqlmodel import Session
 
@@ -25,7 +27,7 @@ def _get_model():
 def _extract_audio(video_path: str, audio_path: str) -> None:
     """Extract 16kHz mono WAV audio from a video file via ffmpeg."""
     cmd = [
-        "ffmpeg",
+        ffmpeg(),
         "-y",
         "-i", video_path,
         "-vn",
@@ -34,7 +36,7 @@ def _extract_audio(video_path: str, audio_path: str) -> None:
         "-ac", "1",
         audio_path,
     ]
-    subprocess.run(cmd, check=True, capture_output=True, text=True)
+    subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=settings.media_timeout_seconds)
 
 
 def _call_whisper_asr(audio_path: str) -> list[dict]:
@@ -76,7 +78,7 @@ def transcribe_video(job_id: str) -> list[dict]:
         transcript = _call_whisper_asr(str(audio_path))
 
         # Step 3: Save transcript.json
-        transcript_path.write_text(json.dumps(transcript, indent=2))
+        write_json(transcript_path, transcript)
 
         # Step 4: Update job status
         with Session(engine) as session:
