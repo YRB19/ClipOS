@@ -108,3 +108,32 @@ def nvidia_chat_completion(model: str, messages: list[dict], **kwargs) -> dict:
 - Don't switch job queue libraries (Redis+RQ is the standing decision) without flagging it back to the architect.
 - Don't add new top-level dependencies without listing them in `requirements.txt` in the same change.
 - Don't rename existing JSON schema fields — breaks every downstream phase silently.
+
+## Phase 1 execution additions — 2026-11-16
+
+The implementation plan in `docs/2026-11-16-implementation-plan.md` now governs
+phase order (1 → 2 → 4 → 5 → 6). Automatic caption burn is part of the normal
+pipeline. Manual stage endpoints are optional overrides and reject changes while
+an automatic run is active.
+
+- Resolve every FFmpeg/ffprobe call through `core/media.py`. `FFMPEG_PATH` and
+  `FFPROBE_PATH` mean executable paths. Legacy `FFMPEG_FULL_PATH` also accepts a bin
+  directory. Do not add versioned Cellar paths to individual modules.
+- `app/migrations/` holds ordered additive migrations. `models/execution.py` adds
+  `pipeline_runs`, `stage_attempts` and `clip_states`; canonical `jobs` fields and
+  transcript/highlight keys remain unchanged. `PipelineRun.active_key` is a unique,
+  nullable job ID and is the database claim for one active run per job.
+- `core/pipeline.py:run_stage` executes one bounded RQ unit, records its input/output
+  checkpoint and elapsed time, and raises failures to RQ. `core/execution.py`
+  reconciles lost tasks and exposes detailed state. Persist task IDs before enqueue;
+  never discover a job by scanning all queue registries.
+- Detailed run states are additive: queued/running/retrying/cancelling/completed/
+  completed_with_errors/failed/cancelled. Keep the legacy job status vocabulary.
+  During execution use run/stage state for progress; terminal partial/cancelled
+  runs map to legacy `failed` with an explanatory message.
+- `POST /jobs/{id}/run` and `/resume` are idempotent for active runs. Cancellation
+  happens at safe unit boundaries. Reuse only successful, validated checkpoints;
+  never mark a file complete merely because it exists. Use temporary files and
+  atomic promotion for checkpoint/render artifacts.
+- Start workers with `python worker.py` (scheduler enabled for delayed retries).
+  RQ remains pinned at 2.0.0; worker spawning/upgrade measurements remain phase 6.
