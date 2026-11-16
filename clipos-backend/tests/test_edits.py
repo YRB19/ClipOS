@@ -27,7 +27,8 @@ def source(tmp_path):
     subprocess.run([ffmpeg(), '-y', '-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=30000/1001:d=4',
                     '-f', 'lavfi', '-i', 'sine=frequency=440:duration=4', '-f', 'lavfi', '-i', 'sine=frequency=880:duration=4',
                     '-map', '0:v', '-map', '1:a', '-map', '2:a', '-c:v', 'libx264', '-preset', 'ultrafast',
-                    '-c:a', 'aac', '-metadata:s:a:0', 'title=Game', '-metadata:s:a:1', 'title=Microphone', str(path)],
+                    '-c:a', 'aac', '-metadata:s:a:0', 'title=Game', '-metadata:s:a:1', 'title=Microphone',
+                    '-metadata:s:a:0', 'handler_name=Game', '-metadata:s:a:1', 'handler_name=Microphone', str(path)],
                    check=True, capture_output=True, timeout=30)
     (raw/'transcript.json').write_text(json.dumps([dict(word='Hello {test} \\N', start=0.8, end=1.1)]))
     (raw/'highlights.json').write_text(json.dumps([dict(clip_id='clip', start=0.7, end=1.3,
@@ -194,6 +195,8 @@ def test_edit_and_render_api_revision_checks_and_refresh(source, monkeypatch):
 
 def test_automatic_source_pipeline_and_edit_resume_skip_asr_and_selection(source, monkeypatch):
     from app.core import pipeline
+    # Legacy queued-stage compatibility; chunk scheduling has dedicated coverage.
+    monkeypatch.setattr(pipeline, 'INITIAL_STAGES', ('assets', 'transcribe', 'highlights'))
     from app.models.execution import PipelineRun
     engine, path = source
     pending, stages = [], []
@@ -349,3 +352,62 @@ def test_delayed_audio_keeps_source_timing(source, tmp_path):
     early = sum(abs(n) for n in samples[2400:12000])/9600
     late = sum(abs(n) for n in samples[31200:40800])/9600
     assert early < 30 and late > 500
+
+
+def test_automatic_recipe_refreshes_only_affected_words_and_preserves_human_edit(source):
+    from app.config import settings
+    engine, _ = source
+    first = ensure_edit('job', 'clip')
+    assert first['recipe']['audio']['tracks'] == [dict(stream_index=1, gain=.5), dict(stream_index=2, gain=1)]
+    transcript = Path(settings.storage_raw)/'job'/'transcript.json'
+    words = json.loads(transcript.read_text())
+    words.append(dict(word='outside', start=3, end=3.2))
+    transcript.write_text(json.dumps(words))
+    assert ensure_edit('job', 'clip')['revision_id'] == first['revision_id']
+    words.append(dict(word='new boundary caption', start=.9, end=1.0))
+    transcript.write_text(json.dumps(words))
+    refreshed = ensure_edit('job', 'clip')
+    assert refreshed['revision'] == first['revision']+1
+    recipe = EditRecipe.model_validate(refreshed['recipe'])
+    recipe.captions.words[0].word = 'Human correction'
+    saved = save_edit('job', 'clip', recipe, refreshed['revision'])
+    words.append(dict(word='later ASR', start=1.1, end=1.2))
+    transcript.write_text(json.dumps(words))
+    assert ensure_edit('job', 'clip') == saved
+
+
+def test_chunk_pipeline_real_source_render_and_caption_only_resume(source, monkeypatch):
+    from app.core import pipeline
+    from app.config import settings
+    from app.models.execution import PipelineRun
+    engine, path = source
+    monkeypatch.setattr(settings, 'clip_min_seconds', 1)
+    pending = []
+    monkeypatch.setattr('app.core.queue.enqueue_stage', lambda task, stage, delay=0: pending.append(task))
+    asr = MagicMock(return_value=[dict(word='Gaming payoff', start=.8, end=1.1)])
+    selection = MagicMock(return_value=(json.dumps([dict(start=.5, end=2.0, hook_text='Payoff', virality_score=.8, reasoning='fixture')]), 'mock'))
+    monkeypatch.setattr('app.core.transcribe._call_whisper_asr', asr)
+    monkeypatch.setattr('app.core.highlights.call_llm_with_fallback', selection)
+    monkeypatch.setattr('app.core.scoring.score_and_title_clips', lambda _: None)
+    def execute():
+        run, _ = pipeline.claim_run('job'); pipeline.dispatch_next(run.run_id)
+        for _ in range(20):
+            if not pending: break
+            pipeline.run_stage(pending.pop(0))
+        else: pytest.fail('Chunk pipeline did not terminate')
+        with Session(engine) as session: assert session.get(PipelineRun, run.run_id).status == 'completed'
+    execute()
+    candidates = json.loads((path.parent/'highlights.json').read_text())
+    clip_id = candidates[0]['clip_id']
+    assert final_output('job', clip_id) is not None
+    current = read_edit('job', clip_id)
+    recipe = EditRecipe.model_validate(current['recipe']); recipe.captions.words[0].word = 'Corrected caption'
+    saved = save_edit('job', clip_id, recipe, current['revision'])
+    execute()
+    assert final_output('job', clip_id).revision_id == saved['revision_id']
+    assert asr.call_count == selection.call_count == 1
+    (path.parent/'transcript.json').unlink()
+    (path.parent/'highlights.json').write_text('{corrupt')
+    execute()
+    assert asr.call_count == selection.call_count == 1
+    assert read_edit('job', clip_id)['revision_id'] == saved['revision_id']

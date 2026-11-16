@@ -22,7 +22,8 @@ def isolated_runtime(tmp_path, monkeypatch):
     init_db(engine)
     for name in ['app.models.job', 'app.core.transcribe', 'app.core.highlights', 'app.core.scoring',
                  'app.core.clip_cutter', 'app.core.pipeline', 'app.core.execution',
-                 'app.core.recipes', 'app.core.assets', 'app.core.renders']:
+                 'app.core.recipes', 'app.core.assets', 'app.core.renders',
+                 'app.core.chunks', 'app.core.imports', 'app.core.cache']:
         monkeypatch.setattr(importlib.import_module(name), 'engine', engine)
     from app.main import app
     for route in app.routes:
