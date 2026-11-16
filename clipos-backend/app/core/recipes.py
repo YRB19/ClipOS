@@ -173,7 +173,7 @@ def validate_source(recipe, asset, job_id):
             raise ValueError('Source regions must span at least two pixels')
 
 
-def default_recipe(job_id, clip_id, asset):
+def default_recipe(job_id, clip_id, asset, db_engine=None):
     highlights = json.loads((Path(settings.storage_raw)/job_id/'highlights.json').read_text())
     candidate = next((h for h in highlights if h['clip_id'] == clip_id), None)
     if candidate is None:
@@ -190,10 +190,19 @@ def default_recipe(job_id, clip_id, asset):
         rate = rate if 1 <= rate <= 60 else Fraction(30)
     except (ValueError, ZeroDivisionError):
         rate = Fraction(30)
+    tracks = [AudioTrack(stream_index=meta['audio_tracks'][0]['stream_index'])] if meta['audio_tracks'] else []
+    if tracks:
+        from app.core.chunks import selected_track
+        microphone = selected_track(asset, db_engine or engine)
+        first_title = (meta['audio_tracks'][0].get('title') or '').lower()
+        # OBS-style explicitly separate game/mic tracks need both in the export.
+        # For unnamed/composite tracks retain the conventional first-track mix.
+        if microphone != tracks[0].stream_index and any(label in first_title for label in ('game', 'desktop')):
+            tracks[0].gain = .5
+            tracks.append(AudioTrack(stream_index=microphone))
     return EditRecipe(source=SourceReference(job_id=job_id, fingerprint=asset.fingerprint),
                       intervals=[interval], captions=CaptionEdit(words=captions, enabled=bool(captions)),
-                      audio=AudioEdit(tracks=[AudioTrack(stream_index=meta['audio_tracks'][0]['stream_index'])]
-                                      if meta['audio_tracks'] else []),
+                      audio=AudioEdit(tracks=tracks),
                       export=ExportPreset(frame_rate=str(rate)))
 
 
@@ -207,7 +216,7 @@ def read_edit(job_id, clip_id, db_engine=None):
                     recipe=json.loads(revision.recipe_json))
 
 
-def save_edit(job_id, clip_id, recipe, expected_revision, db_engine=None):
+def save_edit(job_id, clip_id, recipe, expected_revision, db_engine=None, generated_signature=None):
     from app.core.assets import ensure_source
     db_engine = db_engine or engine
     asset = ensure_source(job_id, db_engine)
@@ -219,10 +228,12 @@ def save_edit(job_id, clip_id, recipe, expected_revision, db_engine=None):
     key, revision_id = f'{job_id}:{clip_id}', str(uuid4())
     with Session(db_engine) as session:
         if expected_revision == 0:
-            session.add(ClipEdit(key=key, job_id=job_id, clip_id=clip_id, revision=1, revision_id=revision_id))
+            session.add(ClipEdit(key=key, job_id=job_id, clip_id=clip_id, revision=1, revision_id=revision_id,
+                                 generated_signature=generated_signature))
         else:
             result = session.execute(update(ClipEdit).where(ClipEdit.key == key, ClipEdit.revision == expected_revision)
-                                     .values(revision=expected_revision+1, revision_id=revision_id, updated_at=now()))
+                                     .values(revision=expected_revision+1, revision_id=revision_id, updated_at=now(),
+                                             generated_signature=generated_signature))
             if not result.rowcount:
                 session.rollback()
                 raise RevisionConflict('Edit changed; reload the current revision before saving')
@@ -240,10 +251,18 @@ def ensure_edit(job_id, clip_id, db_engine=None):
     db_engine = db_engine or engine
     existing = read_edit(job_id, clip_id, db_engine)
     if existing:
-        return existing  # AI retries must never overwrite an optional human correction.
+        with Session(db_engine) as session:
+            head = session.get(ClipEdit, f'{job_id}:{clip_id}')
+            if head.generated_signature is None:
+                return existing  # Human edits and pre-migration revisions are protected.
     from app.core.assets import ensure_source
-    recipe = default_recipe(job_id, clip_id, ensure_source(job_id, db_engine))
+    recipe = default_recipe(job_id, clip_id, ensure_source(job_id, db_engine), db_engine)
+    import hashlib
+    generated = hashlib.sha256(recipe.model_dump_json().encode()).hexdigest()
+    if existing and head.generated_signature == generated:
+        return existing
     try:
-        return save_edit(job_id, clip_id, recipe, 0, db_engine)
+        return save_edit(job_id, clip_id, recipe, existing['revision'] if existing else 0, db_engine,
+                         generated_signature=generated)
     except RevisionConflict:
         return read_edit(job_id, clip_id, db_engine)
