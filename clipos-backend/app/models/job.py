@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlmodel import SQLModel, Field, Session, create_engine, text
+from sqlmodel import SQLModel, Field, Session, create_engine
 
 from app.config import settings
 
@@ -25,17 +25,8 @@ engine = create_engine(
 
 
 def init_db(custom_engine=None) -> None:
-    e = custom_engine or engine
-    SQLModel.metadata.create_all(e)
-
-    # SQLite migration: add updated_at column if missing from existing table
-    if "sqlite" in str(e.url):
-        with Session(e) as session:
-            try:
-                session.execute(text("SELECT updated_at FROM jobs LIMIT 1"))
-            except Exception:
-                session.execute(text("ALTER TABLE jobs ADD COLUMN updated_at TIMESTAMP"))
-                session.commit()
+    from app.migrations import migrate
+    migrate(custom_engine or engine)
 
 
 def get_session(custom_engine=None):
