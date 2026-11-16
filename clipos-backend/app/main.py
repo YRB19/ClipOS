@@ -7,13 +7,15 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.models.job import init_db
-from app.routers import health, ingest, transcribe, highlights, clips, reframe, captions, scoring, jobs
+from app.routers import health, ingest, transcribe, highlights, clips, reframe, captions, scoring, jobs, edits
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from app.core.media import media_diagnostics
     media_diagnostics()
+    Path(settings.storage_raw).mkdir(parents=True, exist_ok=True)
+    Path(settings.storage_clips).mkdir(parents=True, exist_ok=True)
     init_db()
     import asyncio
     from contextlib import suppress
@@ -45,10 +47,11 @@ app.include_router(reframe.router)
 app.include_router(captions.router)
 app.include_router(scoring.router)
 app.include_router(jobs.router)
+app.include_router(edits.router)
 
-# Serve stored files (clips, raw videos, etc.) for the frontend gallery
-storage = Path(settings.storage_raw).resolve().parent  # -> storage/
-app.mount("/files", StaticFiles(directory=str(storage)), name="files")
+# Preserve canonical /files/raw and /files/clips URLs with independently configured roots.
+app.mount("/files/raw", StaticFiles(directory=str(Path(settings.storage_raw).resolve()), check_dir=False), name="raw-files")
+app.mount("/files/clips", StaticFiles(directory=str(Path(settings.storage_clips).resolve()), check_dir=False), name="clip-files")
 
 
 @app.get("/")
