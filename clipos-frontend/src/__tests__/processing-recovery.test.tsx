@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 
 vi.mock("@/lib/api", () => ({ api: {
   getQueueStatus: vi.fn(), resumePipeline: vi.fn(), cancelPipeline: vi.fn(),
-  getHighlights: vi.fn(), burnCaptions: vi.fn(), videoUrl: (_j: string, _c: string, name: string) => `/files/${name}`,
+  getHighlights: vi.fn(), mediaUrl: (path: string) => path, burnCaptions: vi.fn(), videoUrl: (_j: string, _c: string, name: string) => `/files/${name}`,
 } }));
 
 afterEach(cleanup);
@@ -54,4 +54,20 @@ describe("Processing recovery", () => {
     expect(document.querySelector("video")?.getAttribute("src")).toBe("/files/clip_captioned.mp4");
     expect(screen.queryByRole("button", { name: "Burn Captions" })).toBeNull();
   });
+  it("plays and downloads the current source render without legacy intermediates", async () => {
+    vi.mocked(api.getHighlights).mockResolvedValue([{ clip_id: "clip", title: "Title", final_score: 0.8,
+      final_hook_text: "Hook", highlight_index: 1, available_variants: [], final_render: {
+        render_id: "render", revision_id: "revision", kind: "final", rq_task_id: "rq", status: "completed",
+        available: true, url: "/files/clips/job/clip/renders/render/final.mp4", is_current: true,
+        error_message: null, created_at: "2026-11-16", finished_at: "2026-11-16",
+      } }]);
+    render(<MemoryRouter initialEntries={["/jobs/job/clips/clip"]}><Routes>
+      <Route path="/jobs/:jobId/clips/:clipId" element={<ClipDetailPage />} />
+    </Routes></MemoryRouter>);
+    await screen.findByText("Download Final edit");
+    expect(document.querySelector("video")?.getAttribute("src")).toContain("/renders/render/final.mp4");
+    expect(screen.queryByRole("tab", { name: "Original" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Burn Captions" })).toBeNull();
+  });
+
 });

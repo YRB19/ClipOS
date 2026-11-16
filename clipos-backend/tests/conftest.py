@@ -21,8 +21,16 @@ def isolated_runtime(tmp_path, monkeypatch):
     engine = create_engine(f'sqlite:///{tmp_path}/isolated-runtime.db', connect_args={'check_same_thread': False})
     init_db(engine)
     for name in ['app.models.job', 'app.core.transcribe', 'app.core.highlights', 'app.core.scoring',
-                 'app.core.clip_cutter', 'app.core.pipeline', 'app.core.execution']:
+                 'app.core.clip_cutter', 'app.core.pipeline', 'app.core.execution',
+                 'app.core.recipes', 'app.core.assets', 'app.core.renders']:
         monkeypatch.setattr(importlib.import_module(name), 'engine', engine)
+    from app.main import app
+    for route in app.routes:
+        if getattr(route, 'name', None) in ('raw-files', 'clip-files'):
+            directory = str(tmp_path/'storage'/('raw' if route.name == 'raw-files' else 'clips'))
+            Path(directory).mkdir(parents=True, exist_ok=True)
+            monkeypatch.setattr(route.app, 'directory', directory)
+            monkeypatch.setattr(route.app, 'all_directories', [directory])
     monkeypatch.setattr('app.main.init_db', lambda: init_db(engine))
     monkeypatch.setattr('app.core.execution.reconcile_active', lambda: None)
     def no_network(*args, **kwargs):

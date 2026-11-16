@@ -23,6 +23,9 @@ def system(tmp_path, monkeypatch):
     engine = create_engine(f'sqlite:///{tmp_path}/library.db', connect_args={'check_same_thread': False})
     init_db(engine)
     monkeypatch.setattr(p, 'engine', engine)
+    # Keep regression coverage for queued Phase 1 work units during transition.
+    monkeypatch.setattr(p, 'INITIAL_STAGES', ('transcribe', 'highlights'))
+    monkeypatch.setattr(p, 'CLIP_STAGES', ('cut', 'reframe', 'captions', 'burn'))
     monkeypatch.setattr('app.main.init_db', lambda: init_db(engine))
     monkeypatch.setattr(execution, 'engine', engine)
     monkeypatch.setattr(settings, 'storage_raw', str(tmp_path / 'raw'))
@@ -290,7 +293,7 @@ def test_migrations_on_backed_up_legacy_db_are_repeatable(tmp_path):
         assert session.get(Job, 'old').duration_seconds == 123
         assert session.get(Job, 'old').updated_at is not None
     with sqlite3.connect(migrated) as conn:
-        assert conn.execute('SELECT count(*) FROM schema_migrations').fetchone()[0] == 2
+        assert conn.execute('SELECT count(*) FROM schema_migrations').fetchone()[0] == 3
     with sqlite3.connect(original) as conn:
         assert 'updated_at' not in [row[1] for row in conn.execute('PRAGMA table_info(jobs)')]
 
