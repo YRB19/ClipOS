@@ -46,11 +46,13 @@ def main() -> None:
     logger.info("Redis URL: %s", settings.redis_url)
 
     # Ensure DB tables exist (worker may start before uvicorn)
+    from app.core.media import media_diagnostics
+    media_diagnostics()
     init_db()
 
     queues = [Queue(name, connection=conn) for name in queue_names]
     worker = Worker(queues, connection=conn)
-    worker.work()
+    worker.work(with_scheduler=True)
 
 
 if __name__ == "__main__":
