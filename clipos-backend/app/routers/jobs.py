@@ -4,29 +4,26 @@ import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from redis import Redis
-from rq import Queue
-from rq.job import Job as RqJob
 from sqlmodel import Session, select, col
 
 from app.config import settings
-from app.core.queue import enqueue_pipeline
-from app.models.job import Job, engine, get_session
+from app.core.pipeline import claim_run, dispatch_next, _finish
+from app.core.execution import latest_run, reconcile, snapshot
+from app.models.execution import PipelineRun, now
+from app.models.job import Job, get_session
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
 
-def _redis() -> Redis:
-    return Redis.from_url(settings.redis_url)
-
-
-def _job_dict(job: Job) -> dict:
+def _job_dict(job: Job, run=None) -> dict:
     from pathlib import Path as _Path
     source_filename = _Path(job.video_path).name if job.video_path else None
     return {
         "job_id": job.job_id,
+        "run_status": run.status if run else None,
+        "execution_stage": run.current_stage if run else None,
         "source_filename": source_filename,
         "status": job.status,
         "created_at": job.created_at.isoformat() if job.created_at else None,
@@ -52,7 +49,7 @@ def list_jobs(
     if status:
         jobs = [j for j in jobs if j.status == status]
 
-    return [_job_dict(j) for j in jobs]
+    return [_job_dict(j, latest_run(session, j.job_id)) for j in jobs]
 
 
 # ── GET /jobs/{job_id} ──────────────────────────────────────────────────────
@@ -65,7 +62,7 @@ def get_job(job_id: str, session: Session = Depends(get_session)):
     if not job:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 
-    result = _job_dict(job)
+    result = _job_dict(job, latest_run(session, job_id))
 
     # Attach clip_ids if highlights.json exists (contains clip_ids after cut_clips)
     highlights_path = Path(settings.storage_raw) / job_id / "highlights.json"
@@ -99,7 +96,17 @@ def get_highlights(job_id: str, session: Session = Depends(get_session)):
 
     import json
     try:
-        return json.loads(highlights_path.read_text())
+        data = json.loads(highlights_path.read_text())
+        from app.models.execution import ClipState
+        states = {c.clip_id: c for c in session.exec(select(ClipState).where(ClipState.job_id == job_id)).all()}
+        for h in data:
+            clip_dir = Path(settings.storage_clips) / job_id / h['clip_id']
+            h['available_variants'] = [name for name in ('clip.mp4', 'clip_vertical.mp4', 'clip_captioned.mp4')
+                                       if (clip_dir / name).is_file() and (clip_dir / name).stat().st_size > 0]
+            state = states.get(h['clip_id'])
+            h['processing_status'] = state.status if state else None
+            h['processing_error'] = state.error_message if state else None
+        return data
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to read highlights: {e}")
 
@@ -114,86 +121,62 @@ def run_job(job_id: str, session: Session = Depends(get_session)):
     if not job:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 
-    if job.status != "ingested":
-        raise HTTPException(
-            status_code=409,
-            detail=f"Job status is '{job.status}', must be 'ingested' to start the automatic pipeline",
-        )
-
+    db_engine = session.get_bind()
+    previous = latest_run(session, job_id)
+    if previous and previous.active_key:
+        reconcile(previous.run_id, db_engine)
+    run, created = claim_run(job_id, db_engine)
     try:
-        rq_job_id = enqueue_pipeline(job_id)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to enqueue pipeline: {e}",
-        )
+        dispatch_next(run.run_id, db_engine)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Failed to enqueue pipeline; resume is available: {exc}")
+    session.expire_all()
+    run = session.get(PipelineRun, run.run_id)
+    return {"run_id": run.run_id, "rq_job_id": run.current_task_id,
+            "status": run.status, "created": created}
 
-    return {"rq_job_id": rq_job_id, "status": "queued"}
+
+@router.post("/{job_id}/resume")
+def resume_job(job_id: str, session: Session = Depends(get_session)):
+    return run_job(job_id, session)
 
 
-# ── GET /jobs/{job_id}/queue-status ─────────────────────────────────────────
+@router.post("/{job_id}/cancel")
+def cancel_job(job_id: str, session: Session = Depends(get_session)):
+    if not session.get(Job, job_id):
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    run = latest_run(session, job_id)
+    if run and run.active_key:
+        run.cancel_requested = True
+        run.status = 'cancelling'
+        session.add(run)
+        session.commit()
+        # Queued work can be fenced immediately; running work finishes its unit.
+        from app.models.execution import StageAttempt
+        attempt = session.get(StageAttempt, run.current_task_id) if run.current_task_id else None
+        from sqlalchemy import update
+        cancelled = not attempt
+        if attempt:
+            result = session.execute(update(StageAttempt).where(
+                StageAttempt.attempt_id == attempt.attempt_id,
+                StageAttempt.status == 'queued').values(status='cancelled', finished_at=now()))
+            cancelled = bool(result.rowcount)
+        if cancelled:
+            _finish(session, run, 'cancelled', 'Cancelled before the next work unit')
+            session.commit()
+        else:
+            session.commit()
+    return {"status": run.status if run else 'idle'}
 
 
 @router.get("/{job_id}/queue_status")
 def get_queue_status(job_id: str, session: Session = Depends(get_session)):
-    """Return pipeline stage from the DB (source of truth) plus RQ state for debugging.
-
-    Response shape:
-        job_id, current_stage, rq_state, error_message, started_at, finished_at
-    """
     job = session.get(Job, job_id)
     if not job:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
-
-    # current_stage is always the pipeline status from the jobs table
-    current_stage = job.status
-
-    # Try to find the RQ job for additional debugging info
-    rq_state = "unknown"
-    started_at = None
-    finished_at = None
-    try:
-        q = Queue(connection=_redis())
-        rq_job = None
-
-        for registry in [q.started_job_registry, q.deferred_job_registry,
-                         q.scheduled_job_registry]:
-            for jid in registry.get_job_ids():
-                rj = RqJob.fetch(jid, connection=_redis())
-                if rj and rj.args == (job_id,) and rj.func_name == "app.core.pipeline:run_pipeline":
-                    rq_job = rj
-                    break
-            if rq_job:
-                break
-
-        if not rq_job:
-            for rj in q.jobs:
-                if rj.args == (job_id,) and rj.func_name == "app.core.pipeline:run_pipeline":
-                    rq_job = rj
-                    break
-
-        if rq_job:
-            rq_state = rq_job.get_status()
-            started_at = rq_job.created_at.isoformat() if rq_job.created_at else None
-            finished_at = rq_job.ended_at.isoformat() if rq_job.ended_at else None
-        else:
-            # No RQ job found — determine likely RQ state from DB status
-            if current_stage == "ingested":
-                rq_state = "queued"
-            elif current_stage in ("done", "failed"):
-                rq_state = "finished"
-            else:
-                rq_state = "started"
-
-    except Exception as e:
-        logger.warning("Error querying RQ for job %s: %s", job_id, e)
-        rq_state = "unknown"
-
-    return {
-        "job_id": job_id,
-        "current_stage": current_stage,
-        "rq_state": rq_state,
-        "error_message": job.error_message,
-        "started_at": started_at,
-        "finished_at": finished_at,
-    }
+    run = latest_run(session, job_id)
+    if run and run.active_key:
+        reconcile(run.run_id, session.get_bind())
+        session.expire_all()
+        job = session.get(Job, job_id)
+    return snapshot(session, job)
