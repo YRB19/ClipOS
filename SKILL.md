@@ -137,3 +137,38 @@ an automatic run is active.
   atomic promotion for checkpoint/render artifacts.
 - Start workers with `python worker.py` (scheduler enabled for delayed retries).
   RQ remains pinned at 2.0.0; worker spawning/upgrade measurements remain phase 6.
+
+## Phase 2 recipe/render additions — 2026-11-16
+
+- Migration 3 adds `source_assets`, `clip_edits`, immutable `edit_revisions` and
+  durable `render_outputs` in `models/edit.py`. AI candidate metadata stays in
+  canonical highlights.json; edits must never overwrite that selection data.
+- `core/recipes.py` defines the strict version-1 edit schema. Source references
+  contain job ID and SHA-256 fingerprint, never arbitrary filesystem paths.
+  Source intervals use absolute seconds. Caption words and crop keyframes use
+  output-local seconds. All source regions use normalized [0,1] coordinates in
+  displayed source space, including sample-aspect-ratio correction.
+- Edit saves require `expected_revision` and use an atomic compare/update. Keep
+  historical revisions immutable; conflict responses are HTTP 409. Automatic
+  retries preserve existing edits instead of regenerating them.
+- `core/assets.py` fingerprints/probes original media and builds versioned proxy,
+  thumbnail and waveform artifacts. Validate their signatures before reuse. The
+  original stays unchanged. Size/mtime allow reuse of an already registered hash.
+- The normal pipeline now runs assets → transcription → highlights → per-clip
+  recipe/direct source render → scoring. Keep old cut/reframe/caption/burn task
+  handlers and manual endpoints for compatibility; they are not final-render
+  dependencies. The default gaming layout fits the entire gameplay on a solid
+  background; do not infer an unverified facecam rectangle.
+- `core/renderer.py` performs trims, layout, crop keyframes, ASS and selected-track
+  audio mixing in one final encode from original media. Preview uses the same
+  semantics at 360×640; final is 1080×1920 H.264/AAC, yuv420p, rational 1–60 fps.
+  Source-space facecam regions must be provided for gameplay_facecam composition.
+- `core/renders.py` pins RQ requests to immutable revision IDs, deduplicates active
+  or valid completed work, records errors/heartbeats and reconciles lost tasks.
+  Outputs live under `clips/{job}/{clip}/renders/{render_id}/{preview|final}.mp4`;
+  preserve earlier renders and legacy files. Expose availability/current-revision
+  state from the backend, never solely from browser state.
+- Render to temporary files, verify geometry, duration, frame rate, pixel/sample
+  aspect format and A/V duration alignment, then promote atomically. Version 1
+  rejects HDR and rotated final inputs until their deliberate conversion presets
+  are implemented; do not silently mislabel those outputs as supported SDR.

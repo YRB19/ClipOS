@@ -185,3 +185,66 @@ one-pass final rendering. Work stops here as requested.
 Implementation consulted the installed RQ 2.0.0 API and official
 [RQ failure/retry documentation](https://python-rq.org/docs/exceptions/); the queue
 library and dependency versions were retained.
+
+
+## Implementation decision — Phase 2, 2026-11-16
+
+**Status: implemented (short-media, API, queue and regression validated).** The user
+requested the next phase after reviewing Phase 1. Phase 2 is complete at its stated
+fixture acceptance checks; work stops here. Phase 4 has not started. The revised
+automatic delivery order remains 1 → 2 → 4 → 5 → 6; phase 3 is optional correction UI.
+
+| ID | Status | Decision and rationale |
+| --- | --- | --- |
+| RECIPE-001 | Implemented | Add strict schema-version-1 edit recipes and immutable edit revisions, independent of AI highlight metadata. Bind to the job/source SHA-256 fingerprint, absolute source intervals, normalized displayed-source regions, output-local caption/keyframe times, selected audio indexes/gains and explicit export settings. Atomic expected-revision saves reject stale requests with HTTP 409. Automatic retries preserve saved edits. |
+| MEDIA-003 | Implemented | Register source fingerprints and expanded stream/rational-frame-rate/sample-aspect/color/audio metadata. Reuse versioned proxy, thumbnail and waveform artifacts after signature checks; preserve original media. Cache a registered fingerprint while original size/mtime remain unchanged. |
+| RENDER-001 | Implemented; realizes MEDIA-002 for final renders | Replace the automatic intermediate cut/reframe/burn dependencies with per-clip recipe and direct-source render units. One final video encode combines interval trims/concatenation, composition/scaling, crop keyframes, ASS and audio mixing. Keep legacy files and handlers readable/runnable. |
+| LAYOUT-001 | Implemented | Provide full-gameplay fit on a solid background, gameplay plus a supplied facecam region, and positioned/animated crop. Default to full-gameplay fit so an unverified facecam/action crop does not discard the HUD. Automatic facecam discovery and representative gaming composition quality are not established in this phase. |
+| RENDER-002 | Implemented | Pin queued preview/final work to immutable revision IDs, deduplicate active/valid completed work, retain durable IDs/errors/heartbeats, reconcile lost tasks and fence ambiguous enqueue delivery. Render to unique revision-associated paths and promote verified files atomically; keep old renders and legacy variants. |
+| EXPORT-001 | Implemented, limited preset | Use 1080×1920 final / 360×640 preview, H.264/AAC MP4, yuv420p, square pixels and rational 1–60 fps. Mix explicitly selected audio tracks with gain/limiting, preserve delayed-audio timing, and provide silent AAC when no tracks are selected. Reject HDR/rotated final inputs pending the deliberate conversion work planned for phase 6. |
+| API-001 | Implemented | Expose edit/save, assets and queued preview/final/history APIs with durable availability and current-revision flags. Gallery/player/download views use current final renders; legacy variants remain accessible. Serve raw/clips configured roots independently, preserving canonical media URLs. Full editing controls remain optional phase 3. |
+
+**Affected files:** new backend `models/edit.py`, `core/recipes.py`, `core/assets.py`,
+`core/renderer.py`, `core/renders.py`, `routers/edits.py` and `tests/test_edits.py`;
+migration 3; expanded ffprobe metadata; pipeline/queue/reconciliation/main/jobs;
+isolated test fixtures and Phase 1 queued-unit regression tests. Frontend API
+schemas, clip/gallery/player/status display and recovery tests; SKILL.md and backend
+README. No new dependencies, global package changes, commit, or deliberate live
+service restart was performed.
+
+**Validation:** **111 backend tests passed** (26.71 seconds for the final fixture
+suite), **8 frontend tests passed**, TypeScript/Vite production build and diff
+whitespace checks passed. New real-media checks cover all three final layouts,
+preview rendering, rational 30000/1001 frame rate, multiple intervals/tracks, silent
+source audio, delayed-source audio, source-file preservation, subtitle text/control
+escaping, and visible trim/caption timing. Frame samples verify reordered blue/red
+source ranges and caption appearance only during the saved local interval. Visually
+inspected a three-layout fixture contact sheet. API checks include save/reload,
+concurrent revision conflicts, stale render revision flags, immutable output
+history, enqueue/lost-worker recovery, byte-range MP4 downloads and navigation
+thumbnail URLs. A private Redis/RQ worker completed a real preview render. Automatic
+pipeline and caption-only/crop-only resume tests verify that ASR/highlight/scoring
+calls are not repeated and no high-quality intermediate clip is required.
+
+Migration 3 ran twice against a backed-up copy of the default local library,
+preserving all **13** original jobs and their existing field values. The working
+library was not migrated by verification. Temporary backup:
+`/var/folders/rp/qnp030cn1nzflxjc7gw9xmnr0000gp/T/clipos-phase2-migration-fo5wec7x/library-backup.db`.
+Existing nonfatal CSS directive build warnings and the fork-worker test warning
+remain; the RQ/macOS worker evaluation stays in phase 6.
+
+**Limits / milestone accounting:** no full gaming-stream inference or quality/
+latency benchmark was run, so M1 and the approximately 20-minute target remain
+unverified. Proxy generation and ASR are still bounded whole-source units until
+phase 4 adds resumable chunks; initial asset preparation adds real work that must
+be included in end-to-end timing. Preview and final share recipe semantics but
+are separately encoded from the original; the source proxy is a reusable navigation
+asset, not a required final intermediate. Defaults do not infer a facecam region or
+perform phrase-caption editing. HDR/rotation conversion, richer selection/pacing
+and the optional full editor remain later packages. Next is phase 4: multi-hour
+imports, audio selection, overlapping chunk analysis and resumable caches.
+
+Implementation checked the official [FFmpeg filter documentation](https://ffmpeg.org/ffmpeg-filters.html)
+and [FFmpeg command/stream documentation](https://ffmpeg.org/ffmpeg.html), then
+validated the installed binary's actual output with fixtures rather than inferring
+media correctness from mocked command calls.

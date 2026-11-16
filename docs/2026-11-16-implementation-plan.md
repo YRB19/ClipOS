@@ -240,3 +240,44 @@ There was no full-stream inference/quality benchmark in this phase.
 Do not begin it in the same implementation turn; stop here for the user's review.
 The remaining delivery order stays 2 → 4 → 5 → 6, with phase 3 optional corrections
 and phase 7 optional integrations.
+
+
+## Phase checkpoint — 2026-11-16: Phase 2 implemented; stopped for review
+
+**Status: implemented and short-media/integration validated.** The user authorized
+starting the next phase after Phase 1. Phase 2's recipe, asset and source-rendering
+work is implemented. See RECIPE-001, MEDIA-003, RENDER-001/002, LAYOUT-001,
+EXPORT-001 and API-001 in [[2026-11-16-architecture-review]] for decisions, rationale,
+affected files, validation and limitations. Phase 4 has not started.
+
+Delivered versioned recipes with immutable revisions and conflict-safe saves;
+source fingerprint/probe records; reusable proxy/waveform/thumbnail artifacts;
+queued revision-pinned preview/final rendering; full-gameplay/background,
+gameplay/facecam and positioned/keyframed crop compositions; one-pass final video
+encoding directly from original media with ASS and selected-track audio mixing;
+verified temporary-output promotion and durable available/current render history.
+The automatic pipeline uses assets → transcription → highlights → recipe/source
+render per clip → scoring. Gallery/playback/download views use the new final
+outputs. Existing sources, legacy variants, canonical schemas and manual task
+handlers remain compatible. The optional full editor is still phase 3.
+
+Validation: **111 backend tests passed; 8 frontend tests and production build
+passed.** Real media verifies layout geometry/aspect, rational frame rates, source
+trim/concatenation order, visible caption timing, audio presence and A/V duration
+alignment including delayed audio. Tests verify revision conflicts/history,
+immutable source/output preservation, real private-Redis preview work, download
+range requests and automatic caption/crop rerenders without repeating ASR or
+selection. Migration 3 passed twice on a backed-up copy with all 13 jobs preserved.
+The working library was not migrated during tests. Restart API/worker with the
+updated code to activate the new tables and automatic path. No new dependencies.
+
+**Milestone accounting:** this completes the phase-2 fixture acceptance checks,
+not M1's representative three-hour automatic clip-quality result or M3's roughly
+20-minute target. Full-source proxy preparation and ASR still need phase-4
+chunking/resume and phase-6 profiling. Real gaming facecam composition, selection
+quality, captions/pacing and total throughput remain to be evaluated. HDR/rotated
+final inputs are explicitly unsupported until their planned conversion presets.
+
+**Next package:** phase 4 — multi-hour source import, microphone/audio selection,
+overlapping chunk analysis, checkpoint/cache identity and incremental candidates.
+Stop here for the user's review. Do not start phase 4 in this implementation turn.

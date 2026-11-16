@@ -195,3 +195,77 @@ and transfer timing separate and include them in end-to-end reporting. Compare
 outputs against setup/payoff, distinct moments, HUD visibility, caption timing,
 audio balance and playable 1080×1920 output. No representative three-hour stream
 or 20-minute throughput/quality benchmark was run in this phase.
+
+## Phase 2 — source-based recipes and renders (16 November 2026)
+
+This supersedes Phase 1's automatic cut/reframe/burn chain. Restart API and worker
+to apply migration 3 and use the new automatic work units. Existing manual stage
+APIs and files remain available. No dependencies or global packages changed.
+
+The automatic path prepares navigation assets, transcribes/selects candidates,
+creates a default recipe for each clip, renders directly from the original, then
+scores/titles the batch. Final video no longer needs cut or reframed intermediate
+encodes. Default layout preserves the full gameplay on a solid background. A
+provided source-space facecam rectangle enables the gameplay/facecam composition;
+manual crops support time-varying x/y keyframes. Facecam discovery is not added in
+this phase. Layout/caption quality on actual gaming streams remains to be evaluated.
+
+Migration 3 adds source assets, edit heads, immutable revisions and render outputs.
+Original sources receive a SHA-256 fingerprint and expanded probe metadata with
+rational frame rates, sample aspect ratio, color fields and individual audio tracks.
+A cached source hash is reused while size/mtime remain unchanged. Proxy MP4, JPEG
+thumbnail and bounded waveform peaks are stored under
+`raw/{job_id}/assets/{fingerprint}/navigation-v1/`. They are reusable navigation
+assets; final and clip-preview rendering both read original media. Full-stream
+proxy preparation is still a bounded whole-source task; chunking and profiling
+remain phases 4 and 6.
+
+### Additive APIs
+
+| Method/path | Behavior |
+| --- | --- |
+| `GET /jobs/{job}/assets` | Probe metadata and available navigation-artifact URLs; pending until source registration/preparation. |
+| `GET /jobs/{job}/clips/{clip}/edit` | Load the current recipe; initialize revision 1 from the candidate if absent. |
+| `PUT /jobs/{job}/clips/{clip}/edit` | Save `{expected_revision, recipe}`; return HTTP 409 on a stale revision. |
+| `POST /jobs/{job}/clips/{clip}/renders` | Queue `{revision_id, kind: "preview" \| "final"}`; return durable render state with HTTP 202. |
+| `GET /jobs/{job}/clips/{clip}/renders` | Render history, errors, availability, output URLs and `is_current` flags. |
+
+The recipe JSON schema is defined by `EditRecipe` in `app/core/recipes.py` and
+exposed through FastAPI's OpenAPI schema. It includes schema_version=1, a source
+job/fingerprint reference, one or more absolute source intervals, layout/source
+regions, crop keyframes, caption text/style, selected audio stream indexes/gains
+and export settings. Region coordinates are normalized [0,1] in displayed source
+space. Caption/keyframe times are seconds on the concatenated output timeline;
+caption timing edits accompanying trim changes must update those local times.
+A recipe supports up to 16 intervals and 300 seconds of output. Saves never rerun
+ASR/selection. The optional full editing UI remains phase 3.
+
+Render requests are pinned to their requested revision, including requests that
+finish after a newer edit is saved. Repeated active or valid completed requests
+reuse a render; failed/missing outputs can be requested again. Each result uses a
+new immutable path under `clips/{job}/{clip}/renders/{render_id}/` and has a paired
+ASS file. Worker failures raise to RQ and persist to SQLite. Lost/expired tasks are
+reconciled every 15 seconds; a failed enqueue fences ambiguous late delivery.
+Preview and final render state persist across browser refreshes. Highlights now
+include `final_render`, and gallery/player/download views prefer the current final
+output. Older render revisions remain accessible through render history; legacy
+variants remain available at their original paths. Starting automatic work is
+blocked while a standalone render is active; recipe/render override requests are
+blocked while an automatic pipeline is active.
+
+Both preview (360×640) and final (1080×1920) share the same composition/caption/audio
+semantics. Final encoding is one libx264/AAC MP4 pass with faststart, yuv420p and an
+explicit rational frame rate (defaults to the source rate up to 60 fps). Audio
+selections use ffprobe's global stream indexes. Selected tracks are resampled,
+mixed with explicit gain and limited; an empty selection produces a silent AAC
+track. Delayed source audio retains its offsets. Captions are output-local ASS;
+control braces/backslashes in literal text display as full-width punctuation to
+prevent subtitle override injection. Word grouping/styling improvements remain
+phase 3. No HDR tone mapping or rotation normalization is implemented yet: those
+final inputs fail explicitly pending the planned presets.
+
+Temporary output is probed for codec, dimensions, duration, frame rate, pixel and
+sample aspect format, audio presence and A/V duration alignment before promotion.
+A changed source cannot publish a result under its previous identity. `/files/raw`
+and `/files/clips` serve their configured roots independently, preserving existing
+media URLs and supporting byte-range playback of the new immutable outputs.
