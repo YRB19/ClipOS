@@ -21,7 +21,7 @@ def enqueue_stage(task_id, stage, delay=0):
 
 
 def task_timeout(stage):
-    return settings.analysis_timeout_seconds if stage in ('transcribe', 'highlights', 'score') else settings.media_timeout_seconds + 60
+    return settings.analysis_timeout_seconds if stage in ('assets', 'transcribe', 'highlights', 'score') else settings.media_timeout_seconds + 60
 
 
 def enqueue_pipeline(job_id):

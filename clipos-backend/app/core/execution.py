@@ -71,6 +71,12 @@ def reconcile(run_id, db_engine=None):
                 if attempt:
                     attempt.status, attempt.error_message, attempt.finished_at = 'failed', message, now()
                     session.add(attempt)
+                if attempt and attempt.stage == 'assets':
+                    from app.models.edit import SourceAsset
+                    asset = session.get(SourceAsset, run.job_id)
+                    if asset:
+                        asset.status, asset.error_message = 'failed', message
+                        session.add(asset)
                 _finish(session, run, 'cancelled' if run.cancel_requested else 'failed', message)
                 session.commit()
     if dispatch:
@@ -113,6 +119,8 @@ def snapshot(session, job):
 
 
 def reconcile_active():
+    from app.core.renders import reconcile_renders
+    reconcile_renders(engine)
     with Session(engine) as session:
         ids = list(session.exec(select(PipelineRun.run_id).where(PipelineRun.active_key.is_not(None))).all())
     for run_id in ids:

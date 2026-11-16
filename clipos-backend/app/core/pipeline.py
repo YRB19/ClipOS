@@ -19,7 +19,8 @@ from app.models.job import Job, engine
 from app.models.execution import PipelineRun, StageAttempt, ClipState, now
 
 logger = logging.getLogger(__name__)
-CLIP_STAGES = ('cut', 'reframe', 'captions', 'burn')
+INITIAL_STAGES = ('assets', 'transcribe', 'highlights')
+CLIP_STAGES = ('recipe', 'render')
 
 
 def _attempts(session, job_id):
@@ -35,6 +36,25 @@ def output_path(job_id, stage, clip_id=None):
 
 
 def signature(job_id, stage, clip_id=None):
+    if stage == 'assets':
+        from app.core.assets import ensure_source, assets_valid
+        asset = ensure_source(job_id, engine)
+        if not assets_valid(asset):
+            raise ValueError('Navigation assets are incomplete')
+        return hashlib.sha256((asset.fingerprint+asset.artifacts_json).encode()).hexdigest()
+    if stage == 'recipe':
+        from app.core.recipes import read_edit
+        edit = read_edit(job_id, clip_id, engine)
+        if not edit:
+            raise ValueError('Clip edit is missing')
+        return edit['revision_id']
+    if stage == 'render':
+        from app.core.renders import final_output
+        output = final_output(job_id, clip_id, engine)
+        if not output:
+            raise ValueError('Current final render is missing')
+        return _media_signature(output.output_path, Path(output.output_path).stat().st_size,
+                                Path(output.output_path).stat().st_mtime_ns, 'render')
     path = output_path(job_id, stage, clip_id)
     if path.suffix == '.json':
         data = json.loads(path.read_text())
@@ -67,7 +87,7 @@ def _media_signature(path, size, mtime, stage):
     meta = get_video_metadata(path)
     if meta['duration'] <= 0 or meta['width'] <= 0:
         raise ValueError('Invalid media checkpoint')
-    if stage in ('reframe', 'burn') and (meta['width'], meta['height']) != (1080, 1920):
+    if stage in ('reframe', 'burn', 'render') and (meta['width'], meta['height']) != (1080, 1920):
         raise ValueError('Invalid vertical geometry')
     return f'{size}:{mtime}'
 
@@ -76,18 +96,22 @@ def input_signature(job_id, stage, clip_id=None):
     source = Path(settings.storage_raw) / job_id / 'source.mp4'
     stat = source.stat()
     source_id = f'{stat.st_size}:{stat.st_mtime_ns}'
-    if stage == 'transcribe':
+    if stage in ('assets', 'transcribe'):
         return source_id
     if stage == 'highlights':
         return signature(job_id, 'transcribe')
-    if stage in ('cut', 'captions', 'score'):
+    if stage in ('cut', 'captions', 'score', 'recipe'):
         highlights = json.loads(output_path(job_id, 'highlights').read_text())
         ranges = sorted((h['clip_id'], h['start'], h['end']) for h in highlights
                         if clip_id is None or h['clip_id'] == clip_id)
         inputs = [source_id, ranges]
-        if stage in ('captions', 'score'):
+        if stage in ('captions', 'score', 'recipe'):
             inputs.append(signature(job_id, 'transcribe'))
         return hashlib.sha256(json.dumps(inputs).encode()).hexdigest()
+    if stage == 'render':
+        from app.core.renderer import RENDERER_VERSION
+        from app.core.assets import ensure_source
+        return signature(job_id, 'recipe', clip_id) + ensure_source(job_id, engine).fingerprint + RENDERER_VERSION
     if stage == 'reframe':
         return signature(job_id, 'cut', clip_id)
     return signature(job_id, 'reframe', clip_id) + signature(job_id, 'captions', clip_id)
@@ -103,7 +127,7 @@ def _valid(attempt):
 
 
 def _plan(job_id, attempts):
-    units = [('transcribe', None), ('highlights', None)]
+    units = [(stage, None) for stage in INITIAL_STAGES]
     # Only expand candidates after a verified detection checkpoint. Artifacts from
     # a legacy/manual run are preserved but never silently treated as verified.
     latest_detection = next((a for a in attempts if a.stage == 'highlights'), None)
@@ -233,6 +257,15 @@ def _heartbeat(run_id):
 def _execute(attempt):
     # Lazy imports avoid loading inference/video libraries in API processes.
     job_id, clip_id = attempt.job_id, attempt.clip_id
+    if attempt.stage == 'assets':
+        from app.core.assets import prepare_assets
+        return prepare_assets(job_id)
+    if attempt.stage == 'recipe':
+        from app.core.recipes import ensure_edit
+        return ensure_edit(job_id, clip_id)
+    if attempt.stage == 'render':
+        from app.core.renders import render_current
+        return render_current(job_id, clip_id, attempt.rq_task_id)
     if attempt.stage == 'transcribe':
         from app.core.transcribe import transcribe_video
         return transcribe_video(job_id)
@@ -278,7 +311,7 @@ def _record_result(task_id, error=None, output_signature=None, elapsed=None):
             key = f'{a.job_id}:{a.clip_id}'
             clip = session.get(ClipState, key) or ClipState(key=key, job_id=a.job_id, clip_id=a.clip_id, run_id=a.run_id)
             clip.run_id, clip.stage, clip.updated_at = a.run_id, a.stage, now()
-            clip.status = 'retrying' if retry else 'failed' if error else 'completed' if a.stage == 'burn' else 'running'
+            clip.status = 'retrying' if retry else 'failed' if error else 'completed' if a.stage in ('burn', 'render') else 'running'
             clip.error_message = str(error) if error else None
             session.add(clip)
         run.current_task_id, run.heartbeat_at = None, now()
@@ -289,8 +322,8 @@ def _record_result(task_id, error=None, output_signature=None, elapsed=None):
             job = session.get(Job, a.job_id)
             # Core compatibility functions may set status; active execution is
             # authoritative and terminal status is only set by _finish.
-            completed_status = {'transcribe': 'transcribed', 'highlights': 'highlights_ready'}
-            retry_status = {'transcribe': 'ingested', 'highlights': 'transcribed'}
+            completed_status = {'assets': 'ingested', 'transcribe': 'transcribed', 'highlights': 'highlights_ready'}
+            retry_status = {'assets': 'ingested', 'transcribe': 'ingested', 'highlights': 'transcribed'}
             job.status = (retry_status if error else completed_status).get(a.stage, 'clips_ready')
             job.error_message, job.updated_at = None, now()
             session.add(job)
