@@ -3,6 +3,8 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 export interface Job {
   job_id: string;
   source_filename: string;
+  run_status?: string | null;
+  execution_stage?: string | null;
   status: string;
   duration_seconds: number | null;
   error_message: string | null;
@@ -16,6 +18,9 @@ export interface HighlightClip {
   title: string;
   final_hook_text: string;
   highlight_index: number;
+  available_variants?: string[];
+  processing_status?: string | null;
+  processing_error?: string | null;
 }
 
 export interface QueueStatus {
@@ -24,6 +29,17 @@ export interface QueueStatus {
   error_message: string | null;
   started_at: string | null;
   finished_at: string | null;
+  execution_stage?: string;
+  run_id?: string;
+  run_status?: string | null;
+  rq_state?: string;
+  cancel_requested?: boolean;
+  completed_units?: number;
+  total_units?: number;
+  completed_clips?: number;
+  failed_clips?: number;
+  stages?: { stage: string; clip_id: string | null; status: string; elapsed_seconds: number | null; error_message: string | null }[];
+  clips?: { clip_id: string; stage: string; status: string; error_message: string | null }[];
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -69,6 +85,10 @@ export const api = {
     request<{ rq_job_id: string; status: string }>(`/jobs/${jobId}/run`, {
       method: "POST",
     }),
+
+  resumePipeline: (jobId: string) => request(`/jobs/${jobId}/resume`, { method: "POST" }),
+
+  cancelPipeline: (jobId: string) => request(`/jobs/${jobId}/cancel`, { method: "POST" }),
 
   burnCaptions: (jobId: string, clipId: string) =>
     request<void>(`/jobs/${jobId}/clips/${clipId}/burn`, { method: "POST" }),
