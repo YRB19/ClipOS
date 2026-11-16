@@ -12,8 +12,19 @@ from app.routers import health, ingest, transcribe, highlights, clips, reframe, 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from app.core.media import media_diagnostics
+    media_diagnostics()
     init_db()
-    yield
+    import asyncio
+    from contextlib import suppress
+    from app.core.execution import reconciliation_loop
+    reconciler = asyncio.create_task(reconciliation_loop())
+    try:
+        yield
+    finally:
+        reconciler.cancel()
+        with suppress(asyncio.CancelledError):
+            await reconciler
 
 
 app = FastAPI(title="ClipOS Backend", version="0.1.0", lifespan=lifespan)

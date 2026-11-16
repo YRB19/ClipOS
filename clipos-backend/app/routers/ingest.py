@@ -8,6 +8,7 @@ from sqlmodel import Session
 
 from app.config import settings
 from app.core.ffprobe import get_video_metadata
+from app.core.media import ffmpeg
 from app.models.job import Job, get_session
 
 router = APIRouter(prefix="/ingest", tags=["ingest"])
@@ -84,6 +85,7 @@ def ingest_youtube(
     try:
         cmd = [
             "yt-dlp",
+            "--ffmpeg-location", str(Path(ffmpeg()).parent),
             "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
             "--merge-output-format", "mp4",
             "-o", str(dest),

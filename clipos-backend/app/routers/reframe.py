@@ -1,12 +1,13 @@
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
+from app.routers.execution_guard import require_idle
 from sqlmodel import Session
 
 from app.core.reframe import reframe_clip
 from app.models.job import Job, get_session
 
-router = APIRouter(prefix="/jobs", tags=["jobs"])
+router = APIRouter(prefix="/jobs", tags=["jobs"], dependencies=[Depends(require_idle)])
 
 
 @router.post("/{job_id}/clips/{clip_id}/reframe")
