@@ -103,6 +103,9 @@ def get_highlights(job_id: str, session: Session = Depends(get_session)):
             clip_dir = Path(settings.storage_clips) / job_id / h['clip_id']
             h['available_variants'] = [name for name in ('clip.mp4', 'clip_vertical.mp4', 'clip_captioned.mp4')
                                        if (clip_dir / name).is_file() and (clip_dir / name).stat().st_size > 0]
+            from app.core.renders import final_output, public_render
+            final = final_output(job_id, h['clip_id'], session.get_bind())
+            h['final_render'] = public_render(final, final.revision_id) if final else None
             state = states.get(h['clip_id'])
             h['processing_status'] = state.status if state else None
             h['processing_error'] = state.error_message if state else None
@@ -125,6 +128,13 @@ def run_job(job_id: str, session: Session = Depends(get_session)):
     previous = latest_run(session, job_id)
     if previous and previous.active_key:
         reconcile(previous.run_id, db_engine)
+    from app.core.renders import reconcile_renders
+    from app.models.edit import RenderOutput
+    reconcile_renders(db_engine)
+    pending_render = session.exec(select(RenderOutput).where(RenderOutput.job_id == job_id,
+                        RenderOutput.active_key.is_not(None))).first()
+    if pending_render and not (previous and previous.active_key):
+        raise HTTPException(status_code=409, detail='A clip render is active; wait for it before starting the pipeline')
     run, created = claim_run(job_id, db_engine)
     try:
         dispatch_next(run.run_id, db_engine)
