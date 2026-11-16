@@ -20,17 +20,7 @@ from sqlmodel import Session
 
 logger = logging.getLogger(__name__)
 
-# --- ffmpeg binary with libass support ---
-# Homebrew's default ffmpeg lacks --enable-libass.  ffmpeg-full has it.
-import shutil
-from pathlib import Path as _P
-
-_FFMPEG_FULL = _P("/opt/homebrew/Cellar/ffmpeg-full/8.1.2_1/bin/ffmpeg")
-_FFMPEG_BIN = str(_FFMPEG_FULL) if _FFMPEG_FULL.exists() else shutil.which("ffmpeg")
-
-def _ffmpeg() -> str:
-    """Return the path to an ffmpeg binary that supports the ASS filter."""
-    return _FFMPEG_BIN
+from app.core.media import ffmpeg as _ffmpeg
 
 # --- ASS style constants (hardcoded, tune later) ---
 
@@ -176,7 +166,9 @@ def generate_captions(job_id: str, clip_id: str) -> str:
         )
 
     ass_content = header + "\n".join(dialogue_lines) + "\n"
-    output_path.write_text(ass_content)
+    temporary = output_path.with_suffix(".partial.ass")
+    temporary.write_text(ass_content)
+    temporary.replace(output_path)
 
     logger.info(
         "[captions] %s/%s — saved %s (%d dialogue lines)",
@@ -197,7 +189,8 @@ def burn_captions(job_id: str, clip_id: str) -> str:
     """
     clip_dir = Path(settings.storage_clips) / job_id / clip_id
     captions_path = clip_dir / "captions.ass"
-    output_path = clip_dir / "clip_captioned.mp4"
+    final_path = clip_dir / "clip_captioned.mp4"
+    output_path = clip_dir / "clip_captioned.partial.mp4"
 
     if not captions_path.exists():
         raise FileNotFoundError(f"No captions.ass found at {captions_path}")
@@ -224,7 +217,7 @@ def burn_captions(job_id: str, clip_id: str) -> str:
             "-c:a", "copy",
             str(output_path),
         ]
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
+        subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=settings.media_timeout_seconds)
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"ffmpeg caption burn-in failed: {e.stderr}") from e
 
@@ -241,4 +234,5 @@ def burn_captions(job_id: str, clip_id: str) -> str:
         job_id, clip_id, output_path, meta["duration"],
     )
 
-    return str(output_path)
+    output_path.replace(final_path)
+    return str(final_path)

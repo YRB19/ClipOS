@@ -10,6 +10,7 @@ import logging
 from pathlib import Path
 
 from app.config import settings
+from app.core.artifacts import write_json
 from app.core.llm_fallback import call_llm_with_fallback
 from app.models.job import Job, engine
 from sqlmodel import Session
@@ -144,7 +145,7 @@ def score_and_title_clips(job_id: str) -> list[dict]:
     merged.sort(key=lambda x: x["final_score"], reverse=True)
 
     # Overwrite highlights.json
-    highlights_path.write_text(json.dumps(merged, indent=2))
+    write_json(highlights_path, merged)
 
     # Update job status to "done"
     with Session(engine) as session:

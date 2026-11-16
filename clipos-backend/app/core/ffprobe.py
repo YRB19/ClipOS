@@ -1,23 +1,20 @@
 import json
-import shutil
 import subprocess
-from pathlib import Path
 
-_FFMPEG_FULL = Path("/opt/homebrew/Cellar/ffmpeg-full/8.1.2_1/bin")
-_FFPROBE_BIN = str(_FFMPEG_FULL / "ffprobe") if (_FFMPEG_FULL / "ffprobe").exists() else shutil.which("ffprobe")
+from app.core.media import ffprobe
 
 
 def get_video_metadata(path: str) -> dict:
     """Run ffprobe on a video file and return key metadata."""
     cmd = [
-        _FFPROBE_BIN,
+        ffprobe(),
         "-v", "quiet",
         "-print_format", "json",
         "-show_format",
         "-show_streams",
         path,
     ]
-    result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+    result = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=30)
     data = json.loads(result.stdout)
 
     video_stream = next(

@@ -5,6 +5,7 @@ import uuid
 from pathlib import Path
 
 from app.config import settings
+from app.core.artifacts import write_json
 from app.core.llm_fallback import call_llm_with_fallback
 import app.core.nvidia_client as _nvidia
 import app.core.openrouter_client as _openrouter
@@ -152,7 +153,7 @@ def detect_highlights(job_id: str) -> list[dict]:
             raise ValueError("LLM returned no valid highlight candidates")
 
         # Save highlights.json
-        highlights_path.write_text(json.dumps(highlights, indent=2))
+        write_json(highlights_path, highlights)
 
         # Update job status
         with Session(engine) as session:
