@@ -14,13 +14,13 @@ export function GalleryPage() {
     if (!jobId) return;
     let cancelled = false;
 
-    api
-      .getHighlights(jobId)
-      .then((data) => { if (!cancelled) setClips(data.filter((clip) => clip.final_render?.available || clip.available_variants === undefined || clip.available_variants.includes("clip_vertical.mp4"))); })
-      .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load clips"); })
+    const refresh = () => api.getHighlights(jobId)
+      .then(data => { if (!cancelled) { setClips(data); setError(null); } })
+      .catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load clips"); })
       .finally(() => { if (!cancelled) setLoading(false); });
-
-    return () => { cancelled = true; };
+    refresh();
+    const interval = setInterval(refresh, 4000);
+    return () => { cancelled = true; clearInterval(interval); };
   }, [jobId]);
 
   if (loading) {
@@ -59,7 +59,7 @@ export function GalleryPage() {
             </Link>
             <div>
               <h1 className="font-display text-2xl font-medium tracking-tight text-paper">Clips</h1>
-              <p className="font-mono text-xs text-muted mt-0.5">{clips.length} clips generated</p>
+              <p className="font-mono text-xs text-muted mt-0.5">{clips.length} candidates · updates as analysis continues</p>
             </div>
           </div>
           <span className="font-mono text-xs text-muted">{jobId?.slice(0, 8)}</span>

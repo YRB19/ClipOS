@@ -17,7 +17,8 @@ export function ClipCard({ clip, jobId }: ClipCardProps) {
   const verticalUrl = api.videoUrl(jobId, clip.clip_id, clip.available_variants?.includes("clip_captioned.mp4") ? "clip_captioned.mp4" : "clip_vertical.mp4");
   const originalUrl = api.videoUrl(jobId, clip.clip_id, "clip.mp4");
   const currentUrl = variant === "vertical" ? (clip.final_render?.url ? api.mediaUrl(clip.final_render.url) : verticalUrl) : originalUrl;
-  const score = clip.final_score ?? 0;
+  const score = clip.final_score ?? clip.virality_score ?? 0;
+  const ready = clip.final_render?.available || clip.available_variants === undefined || clip.available_variants.includes("clip_vertical.mp4");
 
   return (
     <div
@@ -25,7 +26,7 @@ export function ClipCard({ clip, jobId }: ClipCardProps) {
       onClick={() => navigate(`/jobs/${jobId}/clips/${clip.clip_id}`)}
     >
       <div className="relative aspect-[9/16] bg-ink overflow-hidden">
-        <video
+        {ready ? <video
           src={currentUrl}
           className="w-full h-full object-cover"
           preload="metadata"
@@ -33,7 +34,7 @@ export function ClipCard({ clip, jobId }: ClipCardProps) {
           muted
           onMouseEnter={(e) => (e.target as HTMLVideoElement).play().catch(() => {})}
           onMouseLeave={(e) => { const v = e.target as HTMLVideoElement; v.pause(); v.currentTime = 0; }}
-        />
+        /> : <div className="h-full flex items-center justify-center p-4 text-center text-muted text-sm">{clip.processing_error || "Candidate selected · preparing clip"}</div>}
         <div className="absolute top-2 left-2 z-10">
           <Tabs value={variant} onValueChange={(v) => setVariant(v as "vertical" | "original")} onClick={(e) => e.stopPropagation()}>
             <TabsList className="bg-ink/80 backdrop-blur-sm rounded border border-line h-7 px-0.5">
@@ -54,11 +55,11 @@ export function ClipCard({ clip, jobId }: ClipCardProps) {
       <div className="p-3 space-y-1.5">
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0 flex-1">
-            {clip.title && (
-              <h3 className="font-display text-sm font-medium truncate text-paper">{clip.title}</h3>
+            {(clip.title || clip.hook_text) && (
+              <h3 className="font-display text-sm font-medium truncate text-paper">{clip.title || clip.hook_text}</h3>
             )}
-            {clip.final_hook_text && (
-              <p className="text-xs text-muted mt-0.5 line-clamp-1">{clip.final_hook_text}</p>
+            {(clip.final_hook_text || clip.reasoning) && (
+              <p className="text-xs text-muted mt-0.5 line-clamp-1">{clip.final_hook_text || clip.reasoning}</p>
             )}
           </div>
           <div className="flex items-center gap-1.5 shrink-0">

@@ -20,15 +20,17 @@ export function ClipDetailPage() {
   useEffect(() => {
     if (!jobId || !clipId) return;
     let cancelled = false;
-    api.getHighlights(jobId).then((clips) => {
+    const refresh = () => api.getHighlights(jobId).then((clips) => {
       if (cancelled) return;
       const found = clips.find((c) => c.clip_id === clipId);
       if (found) {
-        setClip(found);
+        setClip(found); setError(null);
         const hasExport = found.available_variants?.includes("clip_captioned.mp4") ?? false;
         setBurned(hasExport);
         if (found.final_render?.available) setVariant("final");
         else if (hasExport) setVariant("captioned");
+        else if (found.available_variants?.length === 1 && found.available_variants[0] === "clip.mp4") setVariant("original");
+        if (found.final_render?.available || hasExport || found.available_variants?.includes("clip_vertical.mp4")) clearInterval(interval);
       } else {
         setError("Clip not found");
       }
@@ -37,7 +39,9 @@ export function ClipDetailPage() {
     }).finally(() => {
       if (!cancelled) setLoading(false);
     });
-    return () => { cancelled = true; };
+    const interval = setInterval(refresh, 4000);
+    refresh();
+    return () => { cancelled = true; clearInterval(interval); };
   }, [jobId, clipId]);
 
   if (loading) {
@@ -69,7 +73,8 @@ export function ClipDetailPage() {
   const finalUrl = clip.final_render?.url ? api.mediaUrl(clip.final_render.url) : null;
   const variants = clip.available_variants ?? ["clip.mp4", "clip_vertical.mp4"];
   const currentUrl = variant === "final" && finalUrl ? finalUrl : variant === "captioned" ? captionedUrl : variant === "vertical" ? verticalUrl : originalUrl;
-  const score = clip.final_score ?? 0;
+  const score = clip.final_score ?? clip.virality_score ?? 0;
+  const ready = Boolean(finalUrl || burned || variants.includes("clip_vertical.mp4") || variants.includes("clip.mp4"));
 
   const handleBurn = async () => {
     setBurning(true);
@@ -99,13 +104,13 @@ export function ClipDetailPage() {
           {/* LEFT — Video Player */}
           <div className="space-y-3">
             <div className="relative aspect-[9/16] rounded-xl overflow-hidden border border-line bg-ink">
-              <video
+              {ready ? <video
                 key={currentUrl}
                 src={currentUrl}
                 controls
                 className="w-full h-full object-cover"
                 playsInline
-              />
+              /> : <div className="h-full flex items-center justify-center p-6 text-center text-muted">{clip.processing_error || "Candidate selected. Your clip is being prepared."}</div>}
             </div>
             <Tabs value={variant} onValueChange={(v) => setVariant(v as "vertical" | "original" | "captioned" | "final")}>
               <TabsList className="w-full">
@@ -120,11 +125,11 @@ export function ClipDetailPage() {
           {/* RIGHT — Info + Score + Actions */}
           <div className="space-y-5">
             <div>
-              {clip.title && (
-                <h1 className="font-display text-2xl font-medium text-paper">{clip.title}</h1>
+              {(clip.title || clip.hook_text) && (
+                <h1 className="font-display text-2xl font-medium text-paper">{clip.title || clip.hook_text}</h1>
               )}
-              {clip.final_hook_text && (
-                <p className="text-muted mt-2">{clip.final_hook_text}</p>
+              {(clip.final_hook_text || clip.reasoning) && (
+                <p className="text-muted mt-2">{clip.final_hook_text || clip.reasoning}</p>
               )}
             </div>
 
@@ -155,7 +160,7 @@ export function ClipDetailPage() {
 
             {/* Action Buttons */}
             <div className="space-y-2">
-              {!finalUrl && (!burned ? (
+              {ready && !finalUrl && (burned || variants.includes("clip_vertical.mp4")) && (!burned ? (
                 <Button
                   onClick={handleBurn}
                   disabled={burning}
@@ -173,7 +178,7 @@ export function ClipDetailPage() {
                   </Button>
                 </a>
               ))}
-              {variant !== "captioned" && <a href={currentUrl} download className="block">
+              {ready && variant !== "captioned" && <a href={currentUrl} download className="block">
                 <Button variant="secondary" className="w-full justify-start gap-3 h-12 border border-line">
                   <Download className="h-4 w-4" />
                   <span>Download {variant === "final" ? "Final edit" : variant === "vertical" ? "Vertical" : "Original"}</span>

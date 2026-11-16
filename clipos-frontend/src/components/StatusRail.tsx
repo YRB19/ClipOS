@@ -16,7 +16,7 @@ const STAGE_ORDER = [
 ];
 
 export function StatusRail({ currentStatus, executionStage, runStatus }: StatusRailProps) {
-  const stageIndex: Record<string, number> = { assets: 0, transcribe: 0, highlights: 1, cut: 2, recipe: 2, render: 3, reframe: 3, captions: 3, burn: 3, score: 3 };
+  const stageIndex: Record<string, number> = { download: 0, assets: 0, transcribe_chunk: 0, highlights_chunk: 1, transcribe: 0, highlights: 1, cut: 2, recipe: 2, render: 3, reframe: 3, captions: 3, burn: 3, score: 3 };
   const currentIdx = runStatus === "completed" ? 4 : executionStage ? (stageIndex[executionStage] ?? 0) : STAGE_ORDER.indexOf(currentStatus);
   const isFailed = runStatus ? ["failed", "completed_with_errors"].includes(runStatus) : currentStatus === "failed";
 

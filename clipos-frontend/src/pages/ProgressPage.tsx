@@ -77,7 +77,7 @@ export function ProgressPage() {
             <h1 className="font-display text-3xl font-medium tracking-tight text-paper">Processing</h1>
             <p className="font-mono text-sm text-muted mt-1">{jobId}</p>
           </div>
-          {(isDone || (status?.completed_clips ?? 0) > 0) && (
+          {(isDone || (status?.analyzed_chunks ?? 0) > 0 || (status?.completed_clips ?? 0) > 0) && (
             <Link to={`/jobs/${jobId}`}>
               <Button className="gap-2">
                 View Gallery
@@ -125,7 +125,7 @@ export function ProgressPage() {
                 <div className="mt-5 space-y-3 text-sm text-muted">
                   <p>{status.completed_units ?? 0} / {status.total_units ?? 0} steps complete · {status.completed_clips ?? 0} clips ready · {status.failed_clips ?? 0} clips failed</p>
                   <progress className="w-full accent-accent" aria-label="Processing progress" max={status.total_units || 1} value={status.completed_units || 0} />
-                  <p className="text-xs">Steps expand when highlights are found.</p>
+                  <p className="text-xs">{status.total_chunks ? `${status.analyzed_chunks ?? 0} / ${status.total_chunks} sections analyzed. Early candidates are available while processing continues.` : "Steps expand when highlights are found."}</p>
                   {status.clips?.filter((clip) => clip.status === "failed").map((clip) => (
                     <p key={clip.clip_id} className="text-destructive">{clip.clip_id}: {clip.stage} — {clip.error_message}</p>
                   ))}
