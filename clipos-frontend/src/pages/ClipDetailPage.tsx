@@ -13,7 +13,7 @@ export function ClipDetailPage() {
   const [clip, setClip] = useState<HighlightClip | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [variant, setVariant] = useState<"vertical" | "original" | "captioned">("vertical");
+  const [variant, setVariant] = useState<"vertical" | "original" | "captioned" | "final">("vertical");
   const [burning, setBurning] = useState(false);
   const [burned, setBurned] = useState(false);
 
@@ -27,7 +27,8 @@ export function ClipDetailPage() {
         setClip(found);
         const hasExport = found.available_variants?.includes("clip_captioned.mp4") ?? false;
         setBurned(hasExport);
-        if (hasExport) setVariant("captioned");
+        if (found.final_render?.available) setVariant("final");
+        else if (hasExport) setVariant("captioned");
       } else {
         setError("Clip not found");
       }
@@ -65,7 +66,9 @@ export function ClipDetailPage() {
   const originalUrl = api.videoUrl(jobId, clip.clip_id, "clip.mp4");
 
   const captionedUrl = api.videoUrl(jobId, clip.clip_id, "clip_captioned.mp4");
-  const currentUrl = variant === "captioned" ? captionedUrl : variant === "vertical" ? verticalUrl : originalUrl;
+  const finalUrl = clip.final_render?.url ? api.mediaUrl(clip.final_render.url) : null;
+  const variants = clip.available_variants ?? ["clip.mp4", "clip_vertical.mp4"];
+  const currentUrl = variant === "final" && finalUrl ? finalUrl : variant === "captioned" ? captionedUrl : variant === "vertical" ? verticalUrl : originalUrl;
   const score = clip.final_score ?? 0;
 
   const handleBurn = async () => {
@@ -104,11 +107,12 @@ export function ClipDetailPage() {
                 playsInline
               />
             </div>
-            <Tabs value={variant} onValueChange={(v) => setVariant(v as "vertical" | "original" | "captioned")}>
+            <Tabs value={variant} onValueChange={(v) => setVariant(v as "vertical" | "original" | "captioned" | "final")}>
               <TabsList className="w-full">
+                {finalUrl && <TabsTrigger value="final" className="flex-1">Final edit</TabsTrigger>}
                 {burned && <TabsTrigger value="captioned" className="flex-1">Captioned</TabsTrigger>}
-                <TabsTrigger value="vertical" className="flex-1">Vertical</TabsTrigger>
-                <TabsTrigger value="original" className="flex-1">Original</TabsTrigger>
+                {variants.includes("clip_vertical.mp4") && <TabsTrigger value="vertical" className="flex-1">Vertical</TabsTrigger>}
+                {variants.includes("clip.mp4") && <TabsTrigger value="original" className="flex-1">Original</TabsTrigger>}
               </TabsList>
             </Tabs>
           </div>
@@ -151,7 +155,7 @@ export function ClipDetailPage() {
 
             {/* Action Buttons */}
             <div className="space-y-2">
-              {!burned ? (
+              {!finalUrl && (!burned ? (
                 <Button
                   onClick={handleBurn}
                   disabled={burning}
@@ -168,11 +172,11 @@ export function ClipDetailPage() {
                     <span>Download Captioned</span>
                   </Button>
                 </a>
-              )}
+              ))}
               {variant !== "captioned" && <a href={currentUrl} download className="block">
                 <Button variant="secondary" className="w-full justify-start gap-3 h-12 border border-line">
                   <Download className="h-4 w-4" />
-                  <span>Download {variant === "vertical" ? "Vertical" : "Original"}</span>
+                  <span>Download {variant === "final" ? "Final edit" : variant === "vertical" ? "Vertical" : "Original"}</span>
                 </Button>
               </a>}
             </div>

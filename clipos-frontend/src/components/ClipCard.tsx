@@ -16,7 +16,7 @@ export function ClipCard({ clip, jobId }: ClipCardProps) {
 
   const verticalUrl = api.videoUrl(jobId, clip.clip_id, clip.available_variants?.includes("clip_captioned.mp4") ? "clip_captioned.mp4" : "clip_vertical.mp4");
   const originalUrl = api.videoUrl(jobId, clip.clip_id, "clip.mp4");
-  const currentUrl = variant === "vertical" ? verticalUrl : originalUrl;
+  const currentUrl = variant === "vertical" ? (clip.final_render?.url ? api.mediaUrl(clip.final_render.url) : verticalUrl) : originalUrl;
   const score = clip.final_score ?? 0;
 
   return (
@@ -38,7 +38,7 @@ export function ClipCard({ clip, jobId }: ClipCardProps) {
           <Tabs value={variant} onValueChange={(v) => setVariant(v as "vertical" | "original")} onClick={(e) => e.stopPropagation()}>
             <TabsList className="bg-ink/80 backdrop-blur-sm rounded border border-line h-7 px-0.5">
               <TabsTrigger value="vertical" className="px-2 py-0.5 text-[10px] h-5">Vertical</TabsTrigger>
-              <TabsTrigger value="original" className="px-2 py-0.5 text-[10px] h-5">Original</TabsTrigger>
+              {(!clip.available_variants || clip.available_variants.includes("clip.mp4")) && <TabsTrigger value="original" className="px-2 py-0.5 text-[10px] h-5">Original</TabsTrigger>}
             </TabsList>
           </Tabs>
         </div>
