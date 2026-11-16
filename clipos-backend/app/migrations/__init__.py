@@ -35,3 +35,8 @@ def migrate(engine):
         if 4 not in versions:
             SourceImport.__table__.create(conn, checkfirst=True)
             conn.execute(text('INSERT INTO schema_migrations(version) VALUES (4)'))
+        if 5 not in versions:
+            columns = {c['name'] for c in inspect(conn).get_columns('clip_edits')}
+            if 'generated_signature' not in columns:
+                conn.execute(text('ALTER TABLE clip_edits ADD COLUMN generated_signature TEXT'))
+            conn.execute(text('INSERT INTO schema_migrations(version) VALUES (5)'))
