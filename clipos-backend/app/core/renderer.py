@@ -9,7 +9,20 @@ from app.core.ffprobe import get_video_metadata
 from app.core.media import ffmpeg
 from app.core.recipes import EditRecipe
 
-RENDERER_VERSION = 'source-render-v1'
+RENDERER_VERSION = 'source-render-v2-hdr'
+HDR_TRANSFERS = ('smpte2084', 'arib-std-b67')
+
+
+def _color_transform(metadata):
+    """Convert tagged BT.2020 PQ/HLG into SDR BT.709 before composition."""
+    color = metadata['color']
+    if color.get('color_transfer') not in HDR_TRANSFERS:
+        tagged_sdr = all(color.get(key) == 'bt709' for key in ('color_transfer', 'color_primaries', 'color_space'))
+        return '', tagged_sdr and color.get('color_range') == 'tv'
+    if color.get('color_primaries') != 'bt2020' or color.get('color_space') not in ('bt2020nc', 'bt2020ncl'):
+        raise ValueError('HDR source needs BT.2020 primaries and nonconstant-luminance matrix for SDR conversion')
+    return ('zscale=t=linear:npl=100,format=gbrpf32le,tonemap=mobius:desat=0,'
+            'zscale=t=bt709:m=bt709:p=bt709:r=tv,format=yuv420p,'), True
 
 
 def _ass_time(seconds):
@@ -78,12 +91,13 @@ def build_command(recipe, source_path, metadata, kind, output):
     sar = Fraction(sar_text.replace(':', '/')) if sar_text not in ('N/A', '0:1') else Fraction(1)
     display_width = max(2, int(metadata['width']*sar)//2*2)
     source_height = metadata['height']
+    color_filter, bt709_output = _color_transform(metadata)
     graph, inputs = [], []
     for n, interval in enumerate(recipe.intervals):
         duration = interval.end-interval.start
         inputs += ['-ss', str(interval.start), '-t', str(duration), '-i', str(Path(source_path).resolve())]
         graph.append(f'[{n}:{metadata["video_stream_index"]}]trim=duration={duration},'
-                     f'setpts=PTS-STARTPTS,scale={display_width}:{source_height},setsar=1,settb=AVTB[v{n}]')
+                     f'setpts=PTS-STARTPTS,{color_filter}scale={display_width}:{source_height},setsar=1,settb=AVTB[v{n}]')
         tracks = []
         for j, track in enumerate(recipe.audio.tracks):
             label = f'a{n}_{j}'
@@ -121,6 +135,9 @@ def build_command(recipe, source_path, metadata, kind, output):
                '-crf', str(recipe.export.crf if kind == 'final' else 27), '-pix_fmt', 'yuv420p',
                '-r', rate_string, '-fps_mode', 'cfr', '-c:a', 'aac', '-ar', '48000', '-ac', '2',
                '-b:a', '192k', '-movflags', '+faststart', str(Path(output).resolve())]
+    if bt709_output:
+        command[-1:-1] = ['-color_primaries', 'bt709', '-color_trc', 'bt709',
+                          '-colorspace', 'bt709', '-color_range', 'tv']
     return command
 
 
@@ -154,8 +171,7 @@ def render_recipe(recipe, source_path, metadata, kind, output_path):
     recipe = EditRecipe.model_validate(recipe)
     if kind not in ('preview', 'final'):
         raise ValueError('Unknown render kind')
-    if metadata['color'].get('color_transfer') in ('smpte2084', 'arib-std-b67'):
-        raise ValueError('HDR input requires the tone-mapping preset planned for phase 6')
+    _, tagged_bt709 = _color_transform(metadata)  # Reject ambiguous HDR before starting work.
     if any(abs(float(d.get('rotation', 0))) > 0.1 for s in metadata['streams']
            if s['codec_type'] == 'video' for d in s.get('side_data_list', [])):
         raise ValueError('Rotated input requires a normalized source orientation')
@@ -172,6 +188,9 @@ def render_recipe(recipe, source_path, metadata, kind, output_path):
         except subprocess.CalledProcessError as exc:
             raise RuntimeError(f'Source render failed: {exc.stderr[-4000:]}') from exc
         verified = validate_output(target, recipe, kind)
+        if tagged_bt709 and any(
+                verified['color'].get(key) != 'bt709' for key in ('color_primaries', 'color_transfer', 'color_space')):
+            raise ValueError('SDR output is missing BT.709 color metadata')
         # Preserve recipe-local ASS beside each immutable render for inspection.
         (folder/'captions.ass').replace(output.with_suffix('.ass'))
         target.replace(output)
