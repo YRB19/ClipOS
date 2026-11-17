@@ -354,6 +354,66 @@ def test_delayed_audio_keeps_source_timing(source, tmp_path):
     assert early < 30 and late > 500
 
 
+@pytest.mark.parametrize('transfer', ['smpte2084', 'arib-std-b67'])
+def test_tagged_hdr_is_tone_mapped_to_bt709_sdr(source, tmp_path, transfer):
+    _, _ = source
+    capabilities = subprocess.run([ffmpeg(), '-encoders'], check=True, capture_output=True, text=True).stdout
+    if 'libx265' not in capabilities:
+        pytest.skip('HEVC encoder unavailable for tagged HDR fixture')
+    hdr = tmp_path/f'{transfer}.mp4'
+    subprocess.run([ffmpeg(), '-y', '-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=30:d=2',
+                    '-vf', 'format=yuv420p10le', '-c:v', 'libx265', '-preset', 'ultrafast',
+                    '-x265-params', f'log-level=error:colorprim=bt2020:transfer={transfer}:colormatrix=bt2020nc',
+                    '-color_primaries', 'bt2020', '-color_trc', transfer, '-colorspace', 'bt2020nc', str(hdr)],
+                   check=True, capture_output=True, timeout=30)
+    from app.core.ffprobe import get_video_metadata
+    metadata = get_video_metadata(str(hdr))
+    assert metadata['color']['color_transfer'] == transfer
+    recipe = EditRecipe.model_validate(ensure_edit('job', 'clip')['recipe'])
+    recipe.intervals = [Interval(start=0, end=1.5)]
+    recipe.captions.enabled, recipe.captions.words = False, []
+    recipe.audio.tracks = []
+    output = tmp_path/f'{transfer}-sdr.mp4'
+    kind = 'final' if transfer == 'smpte2084' else 'preview'
+    converted = render_recipe(recipe, str(hdr), metadata, kind, output)
+    assert all(converted['color'][key] == 'bt709' for key in ('color_primaries', 'color_transfer', 'color_space'))
+    assert converted['color']['pix_fmt'] == 'yuv420p'
+    command = build_command(recipe, str(hdr), metadata, kind, output)
+    assert 'tonemap=mobius:desat=0' in ' '.join(command)
+    assert command[command.index('-color_trc') + 1] == 'bt709'
+
+
+def test_variable_rate_source_exports_explicit_60fps_cfr(source, tmp_path):
+    _, _ = source
+    variable = tmp_path/'variable.mkv'
+    subprocess.run([ffmpeg(), '-y', '-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=60:d=2',
+                    '-vf', "select='if(lt(t,1),not(mod(n,2)),1)'", '-fps_mode', 'vfr',
+                    '-c:v', 'libx264', '-preset', 'ultrafast', str(variable)],
+                   check=True, capture_output=True, timeout=30)
+    from app.core.ffprobe import get_video_metadata
+    metadata = get_video_metadata(str(variable))
+    recipe = EditRecipe.model_validate(ensure_edit('job', 'clip')['recipe'])
+    recipe.intervals = [Interval(start=0, end=1.8)]
+    recipe.captions.enabled, recipe.captions.words = False, []
+    recipe.audio.tracks = []
+    recipe.export.frame_rate = '60/1'
+    output = tmp_path/'variable-cfr.mp4'
+    rendered = render_recipe(recipe, str(variable), metadata, 'final', output)
+    assert rendered['frame_rate'] == '60/1'
+    assert abs(rendered['duration']-1.8) < .15
+
+
+def test_high_frame_rate_default_preserves_60fps_cap(source, tmp_path):
+    _, path = source
+    subprocess.run([ffmpeg(), '-y', '-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=120:d=2',
+                    '-c:v', 'libx264', '-preset', 'ultrafast', str(path)],
+                   check=True, capture_output=True, timeout=30)
+    from app.core.recipes import default_recipe
+    asset = ensure_source('job')
+    recipe = default_recipe('job', 'clip', asset)
+    assert recipe.export.frame_rate == '60/1'
+
+
 def test_automatic_recipe_refreshes_only_affected_words_and_preserves_human_edit(source):
     from app.config import settings
     engine, _ = source
