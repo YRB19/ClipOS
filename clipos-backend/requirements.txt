@@ -11,5 +11,5 @@ yt-dlp==2025.2.19
 faster-whisper==1.2.1
 opencv-python==4.10.0.84
 numpy==1.26.4
-rq==2.0.0
-redis==6.0.0
+rq==2.6.1
+redis==7.1.0
