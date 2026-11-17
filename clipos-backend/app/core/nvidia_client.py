@@ -17,17 +17,17 @@ def nvidia_chat_completion(model: str, messages: list[dict], **kwargs) -> dict:
 
     headers = {"Authorization": f"Bearer {api_key}"}
 
-    print(f"[nvidia_client] Headers: {{'Authorization': 'Bearer {api_key[:4]}...{api_key[-4:]}'}}")
 
+    request_timeout = kwargs.pop("request_timeout", settings.llm_request_timeout_seconds)
     resp = requests.post(
         f"{NVIDIA_API_BASE}/chat/completions",
         headers=headers,
         json={"model": model, "messages": messages, **kwargs},
-        timeout=300,  # GLM-5.2 can be slow on free tier with long transcripts — tune based on observed latency
+        timeout=request_timeout,
     )
     if not resp.ok:
         raise requests.HTTPError(
-            f"NVIDIA API error {resp.status_code}: {resp.text}",
+            f"NVIDIA API error {resp.status_code}",
             response=resp,
         )
     return resp.json()

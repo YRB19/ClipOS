@@ -13,15 +13,16 @@ def openrouter_chat_completion(model: str, messages: list[dict], **kwargs) -> di
 
     headers = {"Authorization": f"Bearer {api_key}"}
 
+    request_timeout = kwargs.pop("request_timeout", settings.llm_request_timeout_seconds)
     resp = requests.post(
         f"{OPENROUTER_API_BASE}/chat/completions",
         headers=headers,
         json={"model": model, "messages": messages, **kwargs},
-        timeout=300,
+        timeout=request_timeout,
     )
     if not resp.ok:
         raise requests.HTTPError(
-            f"OpenRouter API error {resp.status_code}: {resp.text}",
+            f"OpenRouter API error {resp.status_code}",
             response=resp,
         )
     return resp.json()
