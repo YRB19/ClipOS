@@ -21,7 +21,14 @@ export interface HighlightClip {
   hook_text?: string;
   reasoning?: string;
   virality_score?: number;
-  evidence?: string;
+  evidence?: string | string[];
+  rank_reasoning?: string;
+  feedback?: "accepted" | "rejected" | "automatic";
+  selection_status?: string;
+  start?: number;
+  end?: number;
+  selected?: boolean;
+  visual?: { action: string; reaction: string; context: string; reason: string; confidence: number } | null;
   available_variants?: string[];
   final_render?: RenderOutput | null;
   processing_status?: string | null;
@@ -89,6 +96,12 @@ export const api = {
 
   getJob: (jobId: string) => request<Job>(`/jobs/${jobId}`),
 
+  getCandidates: (jobId: string) => request<HighlightClip[]>(`/jobs/${jobId}/candidates`),
+  saveFeedback: (jobId: string, clipId: string, decision: "accepted" | "rejected" | "automatic", reviewSeconds?: number) =>
+    request(`/jobs/${jobId}/clips/${clipId}/feedback`, { method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decision, review_seconds: reviewSeconds }) }),
+  addMarker: (jobId: string, timeSeconds: number, label: string) => request(`/jobs/${jobId}/markers`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ time_seconds: timeSeconds, label }) }),
   getHighlights: (jobId: string) => request<HighlightClip[]>(`/jobs/${jobId}/highlights`),
 
   getQueueStatus: (jobId: string) => request<QueueStatus>(`/jobs/${jobId}/queue_status`),
