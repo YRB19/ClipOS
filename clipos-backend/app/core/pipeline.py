@@ -36,6 +36,15 @@ def output_path(job_id, stage, clip_id=None):
 
 
 def signature(job_id, stage, clip_id=None):
+    if stage == 'rank':
+        from app.core.selection import rank_signature
+        return rank_signature(job_id, engine)
+    if stage == 'assess':
+        from app.core.selection import assessment, digest
+        result = assessment(job_id, clip_id, engine)
+        if result is None:
+            raise ValueError('Visual assessment is missing')
+        return digest(result)
     if stage.endswith('_chunk'):
         from app.core.chunks import checkpoint_signature
         return checkpoint_signature(job_id, stage, clip_id, engine)
@@ -107,6 +116,12 @@ def _media_signature(path, size, mtime, stage):
 
 
 def input_signature(job_id, stage, clip_id=None):
+    if stage == 'rank':
+        from app.core.selection import rank_key
+        return rank_key(job_id, engine)
+    if stage == 'assess':
+        from app.core.selection import assessment_key
+        return assessment_key(job_id, clip_id, engine)
     if stage.endswith('_chunk'):
         from app.core.chunks import context
         return context(job_id, stage, clip_id, engine)[2]
@@ -169,18 +184,28 @@ def _plan(job_id, attempts, db_engine=None):
         # Fingerprinting/probing stay in the worker, never the initial /run request.
         if not latest_assets or not _valid(latest_assets):
             return units
-        path = Path(settings.storage_raw)/job_id/'highlights.json'
-        candidates = json.loads(path.read_text()) if path.exists() else []
+        from app.core.selection import shortlist
+        latest = {}
+        for attempt in attempts:
+            latest.setdefault(attempt.unit_key, attempt)
+        all_analyzed = True
         for window in windows(job.duration_seconds):
             index = str(window['index'])
-            units.extend([('transcribe_chunk', index), ('highlights_chunk', index)])
-            verified = load(job_id, 'highlights_chunk', index, db_engine)
-            ids = {h['clip_id'] for h in verified or []}
+            for stage in ('transcribe_chunk', 'highlights_chunk'):
+                units.append((stage, index))
+                attempt = latest.get(_key(stage, index))
+                if not attempt or not _valid(attempt):
+                    all_analyzed = False
+        if not all_analyzed:
+            return units
+        if settings.selection_vision_enabled:
+            units.extend(('assess', h['clip_id']) for h in shortlist(job_id, db_engine))
+        units.append(('rank', None))
+        rank = latest.get('rank')
+        if rank and _valid(rank):
+            candidates = json.loads((Path(settings.storage_raw)/job_id/'highlights.json').read_text())
             for h in candidates:
-                if h['clip_id'] in ids:
-                    units.extend((stage, h['clip_id']) for stage in CLIP_STAGES)
-        if candidates:
-            units.append(('score', None))
+                units.extend((stage, h['clip_id']) for stage in CLIP_STAGES)
         return units
     units = [(stage, None) for stage in INITIAL_STAGES]
     # Only expand candidates after a verified detection checkpoint. Artifacts from
@@ -199,6 +224,7 @@ def _restore_aggregates(job_id, db_engine):
     from app.core.chunks import assemble_transcript, assemble_candidates
     for filename, assemble, required in (
         ('transcript.json', assemble_transcript, {'word', 'start', 'end'}),
+        ('candidates.json', assemble_candidates, {'clip_id', 'start', 'end'}),
         ('highlights.json', assemble_candidates, {'clip_id', 'start', 'end'})):
         try:
             data = json.loads((Path(settings.storage_raw)/job_id/filename).read_text())
@@ -336,6 +362,12 @@ def _heartbeat(run_id):
 def _execute(attempt):
     # Lazy imports avoid loading inference/video libraries in API processes.
     job_id, clip_id = attempt.job_id, attempt.clip_id
+    if attempt.stage == 'rank':
+        from app.core.selection import rank_candidates
+        return rank_candidates(job_id)
+    if attempt.stage == 'assess':
+        from app.core.selection import assess_candidate
+        return assess_candidate(job_id, clip_id)
     if attempt.stage == 'download':
         from app.core.imports import download_source
         return download_source(job_id)
@@ -371,6 +403,9 @@ def _execute(attempt):
 
 
 def _transient(exc):
+    from app.core.llm_fallback import ProvidersUnavailable
+    if isinstance(exc, ProvidersUnavailable):
+        return exc.retryable
     if isinstance(exc, (requests.Timeout, requests.ConnectionError, TimeoutError)):
         return True
     return isinstance(exc, requests.HTTPError) and exc.response is not None and (
@@ -392,7 +427,7 @@ def _record_result(task_id, error=None, output_signature=None, elapsed=None):
         failures = sum(x.unit_key == a.unit_key and x.run_id == a.run_id and x.status == 'failed'
                        for x in _attempts(session, a.job_id))
         retry = error and _transient(error) and failures < 3
-        is_clip = a.clip_id is not None and not a.stage.endswith('_chunk')
+        is_clip = a.clip_id is not None and not a.stage.endswith('_chunk') and a.stage != 'assess'
         if is_clip:
             key = f'{a.job_id}:{a.clip_id}'
             clip = session.get(ClipState, key) or ClipState(key=key, job_id=a.job_id, clip_id=a.clip_id, run_id=a.run_id)
