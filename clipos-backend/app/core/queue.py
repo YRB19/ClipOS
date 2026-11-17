@@ -23,7 +23,7 @@ def enqueue_stage(task_id, stage, delay=0):
 def task_timeout(stage):
     if stage == 'download':
         return settings.download_timeout_seconds + 60
-    return settings.analysis_timeout_seconds if stage.endswith('_chunk') or stage in ('assets', 'transcribe', 'highlights', 'score') else settings.media_timeout_seconds + 60
+    return settings.analysis_timeout_seconds if stage.endswith('_chunk') or stage in ('assets', 'transcribe', 'highlights', 'score', 'rank', 'assess') else settings.media_timeout_seconds + 60
 
 
 def enqueue_pipeline(job_id):

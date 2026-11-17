@@ -107,7 +107,7 @@ def snapshot(session, job):
             stages.append(dict(stage=a.stage, clip_id=a.clip_id, status=a.status,
                                rq_task_id=a.rq_task_id, elapsed_seconds=a.elapsed_seconds,
                                error_message=a.error_message))
-    candidate_ids = {clip_id for stage, clip_id in plan if clip_id and not stage.endswith('_chunk')}
+    candidate_ids = {clip_id for stage, clip_id in plan if clip_id and not stage.endswith('_chunk') and stage != 'assess'}
     clips = [c for c in session.exec(select(ClipState).where(ClipState.job_id == job.job_id)).all()
              if c.clip_id in candidate_ids]
     try:
