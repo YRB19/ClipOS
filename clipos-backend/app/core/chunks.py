@@ -19,7 +19,7 @@ from app.models.job import engine
 from app.models.source_import import SourceImport
 
 ASR_VERSION = 'whisper-vad-absolute-v1'
-SELECTION_VERSION = 'window-selection-v1'
+SELECTION_VERSION = 'window-selection-v2'
 
 
 def digest(value):
@@ -57,12 +57,15 @@ def context(job_id, stage, index, db_engine=None):
     if stage == 'transcribe_chunk':
         inputs = asr_inputs
     else:
-        from app.core.highlights import SYSTEM_PROMPT, PROVIDER_TIERS
+        from app.core.highlights import SYSTEM_PROMPT
+        from app.core.llm_fallback import provider_tiers
+        from app.core.signals import signal_settings, markers_for
         transcript = load(job_id, 'transcribe_chunk', index, db_engine)
         if transcript is None:
             raise ValueError('Selection requires a verified ASR chunk')
         inputs = dict(version=SELECTION_VERSION, asr=digest(asr_inputs), words=digest(transcript),
-                      prompt=SYSTEM_PROMPT, providers=[t[2] for t in PROVIDER_TIERS],
+                      prompt=SYSTEM_PROMPT, providers=settings.text_models, signals=signal_settings(),
+                      markers=markers_for(asset, window, db_engine or engine),
                       max_chars=settings.analysis_max_chars, minimum=settings.clip_min_seconds,
                       maximum=settings.clip_max_seconds, count=settings.target_clip_count,
                       total_seconds=settings.candidate_total_seconds)
@@ -192,14 +195,19 @@ def _overlaps(a, b):
 
 
 def assemble_candidates(job_id, db_engine=None):
+    from app.core.signals import merge_candidates
     asset = ensure_source(job_id, db_engine or engine)
     candidates = []
     for window in windows(json.loads(asset.metadata_json)['duration']):
         data = load(job_id, 'highlights_chunk', str(window['index']), db_engine)
         if data:
             candidates.extend(data)
+    pool = merge_candidates(candidates)
+    write_json(Path(settings.storage_raw)/job_id/'candidates.json', pool)
+    # Provisional gallery selection stays visible during analysis. Final ranking
+    # sees the whole retained pool rather than the provisional display cap.
     selected, seconds = [], 0
-    for h in sorted(candidates, key=lambda h: (-h['virality_score'], h['start'], h['clip_id'])):
+    for h in sorted(pool, key=lambda h: (-h['virality_score'], h['start'], h['clip_id'])):
         if len(selected) >= settings.target_clip_count:
             break
         if seconds+h['end']-h['start'] > settings.candidate_total_seconds or any(_overlaps(h, old) for old in selected):
@@ -217,16 +225,23 @@ def highlights_chunk(job_id, index, db_engine=None):
     if cached is not None:
         assemble_candidates(job_id, db_engine)
         return cached
-    from app.core.highlights import (SYSTEM_PROMPT, PROVIDER_TIERS, _build_transcript_text,
-                                     _parse_llm_json, _validate_highlights, call_llm_with_fallback)
+    from app.core.highlights import SYSTEM_PROMPT, _build_transcript_text, call_llm_with_fallback
+    from app.core.llm_fallback import provider_tiers
+    from app.core.selection_validation import candidates_response
+    from app.core.signals import event_candidates, merge_candidates
     asset, window, key, _ = context(job_id, 'highlights_chunk', index, db_engine)
     words = load(job_id, 'transcribe_chunk', index, db_engine)
     candidates = []
+    def validate(raw):
+        return candidates_response(raw, window['extract_start'], window['extract_end'],
+                                   settings.clip_min_seconds, settings.clip_max_seconds)
     for group in _bounded_groups(words):
         raw, _ = call_llm_with_fallback(messages=[{'role': 'system', 'content': SYSTEM_PROMPT},
-            {'role': 'user', 'content': 'Absolute source seconds. Select only inside this excerpt.\n'+_build_transcript_text(group)}],
-            provider_tiers=PROVIDER_TIERS, temperature=.3, max_tokens=4096)
-        candidates.extend(_validate_highlights(_parse_llm_json(raw)))
+            {'role': 'user', 'content': f"Absolute source seconds; allowed bounds {window['extract_start']}..{window['extract_end']}. "
+             f"Clip duration {settings.clip_min_seconds}..{settings.clip_max_seconds}s. Preserve setup/payoff.\n"+_build_transcript_text(group)}],
+            provider_tiers=provider_tiers(), temperature=.3, max_tokens=4096, validate=validate,
+            job_id=job_id, stage='highlights_chunk', prompt_version=SELECTION_VERSION, db_engine=db_engine or engine)
+        candidates.extend(dict(h, evidence=['transcript']) for h in validate(raw))
     if not words:
         # Eligibility only: Phase 5 adds visual evidence/ranking, never claim this is a detected highlight.
         length = min(settings.clip_max_seconds, window['end']-window['start'], 30)
@@ -249,6 +264,20 @@ def highlights_chunk(job_id, index, db_engine=None):
         valid.append(h)
     if words and candidates and not valid:
         raise ValueError('Selection returned no candidates inside the configured source/duration bounds')
+    valid.extend(event_candidates(asset, window, selected_track(asset, db_engine), db_engine or engine))
+    valid = merge_candidates(valid)
+    # Reserve recall slots for visual/audio/manual candidates so transcript volume
+    # cannot erase them before the cross-source shortlist is formed.
+    priority = sorted([h for h in valid if 'manual_marker' in h.get('evidence', [])], key=lambda h: h['start'])
+    spoken = sorted([h for h in valid if h not in priority and 'transcript' in h.get('evidence', [])],
+                    key=lambda h: (-h['virality_score'], h['start']))
+    nonverbal = sorted([h for h in valid if h not in priority and h not in spoken],
+                      key=lambda h: (-h.get('evidence_strength', 0), h['start']))
+    valid = priority[:]
+    for i in range(max(len(spoken), len(nonverbal))):
+        if i < len(spoken): valid.append(spoken[i])
+        if i < len(nonverbal): valid.append(nonverbal[i])
+    valid = valid[:settings.selection_candidates_per_chunk]
     publish(job_id, 'highlights_chunk', index, valid, db_engine)
     assemble_candidates(job_id, db_engine)
     return valid
