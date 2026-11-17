@@ -383,3 +383,35 @@ included `../docs/fixtures/phase5-selection-example.json` is synthetic, so its r
 is only a format/function smoke test. No real-stream quality or 20-minute latency
 result is claimed. Restart API and worker to activate the new routes/settings and
 additive migration.
+
+### Phase 6: measured export and worker update
+
+The dated [local benchmark](../docs/benchmarks/2026-11-17-phase6.md) records short
+real-media ASR/render comparisons, asset preparation, memory/size, and a one-pair
+ASR/render contention trial. CPU faster-whisper base/int8 and libx264 CRF 20 remain
+the defaults: the tested MLX base adapter was only slightly faster on one cached
+30-second recording and returned one zero-duration word, while VideoToolbox's
+small render-time gain came with a size or SSIM tradeoff. This is a local decision,
+not a claim about three-hour throughput or clip quality. Reproduce the probes
+with `PYTHONPATH=. .venv/bin/python tools/benchmark_asr.py --help` and
+`PYTHONPATH=. .venv/bin/python tools/benchmark_phase6.py --help`; use isolated
+outputs and a manually marked truth transcript for real WER.
+
+Automatic recipes cap source rates above 60 at 60 fps; VFR material is normalized
+to the recipe's explicit CFR rate. Tagged BT.2020 PQ/HLG media now passes through
+`zscale`/tone mapping to BT.709 SDR before composition and gets explicit BT.709
+output tags. Ambiguously tagged HDR remains rejected. Known limited-range BT.709
+SDR is tagged explicitly; unknown SDR color metadata is not guessed. Existing
+H.264/AAC/yuv420p, 1080×1920 final and 360×640 preview settings remain.
+Renderer version 2 creates fresh immutable outputs when an older render exists.
+
+RQ is pinned to 2.6.1 with redis-py 7.1.0. On macOS with a TCP Redis URL,
+`python worker.py` uses `SpawnWorker` and still enables the delayed-task scheduler;
+an explicit Unix socket URL uses the previous fork worker because the tested
+spawn path cannot reconstruct that socket connection. The worker no longer
+preloads CV/ASR modules in its parent. Restart API/worker with the pinned
+requirements to activate the change. The scheduler itself can still fork.
+
+The full product target remains open: no representative three-hour gaming input,
+manually marked clip references, first-preview timing, full pipeline API cost or
+upload-ready review was available in this phase.

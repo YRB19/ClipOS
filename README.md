@@ -95,7 +95,7 @@ uvicorn app.main:app --reload
 # Terminal 3 — RQ worker (runs the pipeline)
 cd clipos-backend
 source .venv/bin/activate
-OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES python worker.py
+python worker.py
 ```
 
 Then start the frontend (Terminal 4, or the same as 2/3):
@@ -108,7 +108,7 @@ npm run dev
 
 Open **http://localhost:5173**, upload a video, and hit **Run pipeline**. Watch progress on the job's progress page.
 
-> **macOS note:** the `OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES` prefix on the worker prevents Objective-C runtime crashes when RQ forks after loading `cv2`/`av`/`faster_whisper`.
+> **macOS note:** with the pinned RQ/Redis client versions, TCP Redis workers spawn job processes. Explicit Unix-socket Redis URLs retain the fork worker; the scheduler may still fork.
 
 ### API keys (`.env`)
 
@@ -122,6 +122,8 @@ DATABASE_URL=sqlite:///./clipos.db
 ```
 
 Text model discovery/ranking requires at least one configured working provider. Audio, scene, and vision analysis are off by default until quality and cost are measured. See [backend settings](clipos-backend/.env.example).
+
+Short local performance and export checks are published in the [Phase 6 benchmark](docs/benchmarks/2026-11-17-phase6.md). They do not establish the three-hour product target.
 
 Frontend `.env` (in `clipos-frontend/`):
 
@@ -209,7 +211,7 @@ npm run build   # tsc -b && vite build
 | Symptom | Fix |
 |---------|-----|
 | `Failed to resolve import "@/..."` in the frontend | Restore the `@` alias in `vite.config.ts` (`resolve.alias["@"] = ./src`) |
-| Worker crashes on macOS after fork | Prefix with `OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES` |
+| Worker crashes on macOS | Check pinned RQ/Redis versions and use the default TCP Redis URL; Unix-socket workers retain the fork path |
 | Caption burn fails: `libass` missing | Install `ffmpeg-full` (Homebrew) so the ASS filter is available |
 | `clipos.sh` says "No current job" | Run `./clipos.sh upload <file>` first, or `./clipos.sh use <job_id>` |
 | Stale jobs stuck in `queued`/`failed` | `./clipos.sh clean redis` (or `redis-cli FLUSHALL`), then restart the worker |

@@ -368,3 +368,48 @@ evaluated deliberately. Sparse frames can miss fast payoffs. Live provider costs
 end-to-end latency, upload-ready acceptance and the twenty-minute target remain
 unmeasured. Phase 6 will address measured speed/output tuning; no Phase 6 work is
 included here.
+
+
+## Phase 6 implementation decisions — 2026-11-17
+
+**Status: implemented local tuning and verified fixtures; representative-stream
+acceptance pending.** The user requested the next phase after Phase 5. This entry
+records measured local choices and stops before optional Phase 7. The automatic
+three-hour gaming stream → roughly ten upload-ready clips in twenty minutes is
+still an unverified target, not an achieved benchmark.
+
+| ID | Status | Decision and rationale |
+| --- | --- | --- |
+| PERF-001 | Implemented measurement; CPU default retained | Add isolated ASR/render benchmark scripts and publish reproducible numbers. On the same 30-second real speech excerpt, faster-whisper base/int8 took 3.473 s with 92 valid word times; cached MLX base took 3.030 s with one zero-duration word. The first MLX run including model download took 25.268 s. On a 14.49-second known-text generated phrase, CPU was faster (2.227 vs 2.666 s) and had lower WER (2.13% vs 4.26%). These small mixed results and absent real gaming truth do not justify switching or adding MLX to runtime dependencies. The official MLX word-timestamp API was checked, but only the current CPU adapter remains production-selected. |
+| ENCODE-001 | Implemented measurement; libx264 default retained | Compare the actual ClipOS 1080×1920 caption/layout graph on two short F1 excerpts against a lossless FFV1 composition. At 50 fps, libx264 CRF 20 took 1.944 s/3.50 MB/SSIM 0.995934; VideoToolbox 8 Mbps took 1.756 s/5.91 MB/0.996431 and 5 Mbps took 1.824 s/3.83 MB/0.994328. At 29.97 fps, libx264 was 1.238 s/2.68 MB/0.968851 versus VideoToolbox 1.096 s/3.87 MB/0.968316. The measured speed gain does not justify the size/quality trade on these samples. No hardware-encoder default or unmeasured speedup is claimed. |
+| EXPORT-002 | Implemented; extends EXPORT-001 | Version the renderer output, convert correctly tagged BT.2020 PQ/HLG to BT.709 SDR with `zscale`/tone mapping before layout, explicitly tag known limited-range BT.709 outputs, and reject ambiguous HDR metadata. Keep H.264/AAC/yuv420p and rational CFR validation. Cap automatic recipes from >60 fps sources at 60 fps rather than falling back to 30. Real FFmpeg fixtures render PQ final and HLG preview, VFR input to 60 fps CFR final, and high-source-rate recipe selection. Real HDR appearance remains unreviewed. |
+| QUEUE-002 | Implemented with a documented Unix-socket fallback | Upgrade pinned RQ 2.0.0 → 2.6.1 and redis-py 6.0.0 → 7.1.0 after private Redis integration. The macOS TCP worker now uses SpawnWorker without parent CV/ASR preloads; delayed-task scheduler remains. Redis-py 8.1.0 failed the spawn trial because connection arguments were not reconstructable. With redis-py 7.1.0, a private TCP spawn job and finished registry passed. Unix-socket spawn failed with an unexpected `path` argument, so explicit Unix URLs retain the fork worker. Scheduler startup can still fork and warn. Logging reports Redis transport without exposing a credential-bearing URL. |
+| PERF-002 | Implemented one-pair probe; increased concurrency deferred | A real 494-second source required 0.462 s fingerprinting and 6.918 s to create the initial 60-second navigation sample in isolated storage. One isolated 30-second CPU ASR plus six-second render trial took 4.979 s serial versus 4.104 s concurrent, but each task slowed under contention. Keep the single default queue/worker until representative multi-job memory/critical-path evidence supports splitting ASR and renders. Preview-resolution and vision-sampling quality tuning await gaming references; vision remains opt-in. |
+| ACCEPT-001 | Proposed validation, not implemented result | Run multiple representative cold-cache three-hour gaming streams with manually marked moments and output review. Record first usable preview, all stage/API times and cost, full-process peak memory/disk, correction/acceptance rates, HUD/caption/audio quality and total wall time. The available 19-minute F1 broadcast is only a short technical probe, not the product input or acceptance dataset. |
+
+**Affected files:** `clipos-backend/app/core/renderer.py`, `recipes.py`,
+`worker.py`, `requirements.txt`, focused real-media/RQ tests,
+`tools/benchmark_asr.py`, `tools/benchmark_phase6.py`, backend/root README,
+`SKILL.md`, benchmark report and these decision/checkpoint mirrors. Earlier
+uncommitted Phase 5 files were preserved; this phase did not rewrite canonical
+transcript/highlight/job schemas or the user's working library.
+
+**Validation:** final backend suite **153 passed**; dependency resolver check and
+`git diff --check` passed. Private TCP Redis verified a spawned worker with its
+scheduler and finished-job registry; existing private RQ failure/render tests
+passed. Real FFmpeg tests exercise tagged synthetic PQ/HLG conversion, VFR→60 fps
+final output, >60 fps recipe cap, A/V geometry/duration/audio checks and source
+preservation. Short benchmark numbers, methods, machine, memory/size and explicit
+unknowns are published in `docs/benchmarks/2026-11-17-phase6.{md,json}`. One
+final frame from the F1 sample showed HUD and caption within the output, alongside
+large unused vertical areas. This is a narrow visual check, not acceptance.
+Frontend code was not changed; no paid provider call, live working-library
+migration or service restart was performed.
+
+**Limitations / next validation:** the default Homebrew FFmpeg executable is
+still broken on this machine; centralized discovery uses the working ffmpeg-full
+pair. First usable preview, full three-hour critical path, API cost, representative
+gaming clip quality, real HDR appearance and statistical run variability are
+unknown. MLX and VideoToolbox results are one-run local probes; neither is a
+product-quality result. The twenty-minute claim remains open. Stop here at the
+user's phase boundary.

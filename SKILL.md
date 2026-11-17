@@ -247,3 +247,23 @@ an automatic run is active.
   selection/ranking checkpoints while retaining valid ASR. The offline paired
   evaluator is only evidence of quality when fed real recordings with the same
   manually marked reference moments in both arms; synthetic fixtures are smoke tests.
+
+## Phase 6 measured export/worker additions — 2026-11-17
+
+- Keep CPU faster-whisper base/int8 and libx264 CRF 20 as the measured local
+  defaults. The short Phase 6 paired probes in `docs/benchmarks/` did not justify
+  promoting MLX or VideoToolbox. Benchmark scripts under `clipos-backend/tools/`
+  write only isolated reports. Do not extrapolate short-source timings into the
+  three-hour/twenty-minute product target or treat synthetic speech WER as gaming
+  accuracy. Unknown first-preview, API cost and real clip acceptance stay unknown.
+- `core/recipes.py` caps higher source rates at 60 fps; explicit recipe rates stay
+  rational. `core/renderer.py` version 2 converts correctly tagged BT.2020 PQ/HLG
+  to BT.709 SDR with zscale/tonemap before composition, and verifies output tags.
+  Ambiguous HDR color descriptions fail rather than being relabeled. Tag known
+  limited-range BT.709 SDR; do not assume untagged input has BT.709 colors. Keep
+  H.264/AAC/yuv420p output and actual CFR/duration/A/V validation.
+- RQ is now pinned at 2.6.1 with redis-py 7.1.0. macOS workers use SpawnWorker
+  for TCP Redis URLs; explicit Unix socket URLs retain Worker because that spawn
+  combination failed a private Redis integration check. The scheduler remains
+  enabled for delayed retries and may still fork. Avoid preloading CV/ASR in the
+  worker parent. Test queue changes against private Redis and isolated storage.

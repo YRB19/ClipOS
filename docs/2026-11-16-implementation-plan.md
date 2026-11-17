@@ -390,3 +390,49 @@ unverified. Live services were not restarted in this implementation check.
 
 **Next package:** Phase 6 measured speed and output tuning, after the user asks
 to continue. Stop here at the user's requested phase boundary.
+
+
+## Phase checkpoint — 2026-11-17: Phase 6 local tuning implemented; stopped for review
+
+**Status: implemented and tested on short local probes; three-hour acceptance
+pending.** Phase 6 measured CPU/MLX ASR, libx264/VideoToolbox render, bounded
+asset preparation and one ASR/render contention pair on this Apple M4 (16 GB).
+Methods, exact results, memory/size and unknowns are in the dated
+[`Phase 6 benchmark`](benchmarks/2026-11-17-phase6.md) and machine-readable JSON.
+The source excerpts are 6–30 seconds from F1 broadcasts and 14.49 seconds of
+known generated speech; they are not representative gaming-stream runs. CPU
+faster-whisper and libx264 remain defaults because the alternatives did not
+clearly improve this small quality/speed/size comparison. MLX is not a runtime
+dependency. Current preview resolution and vision frame sampling were not changed
+without marked gaming references.
+
+The renderer now converts tagged BT.2020 PQ/HLG to BT.709 SDR before composing
+clips, emits/verifies BT.709 tags for known SDR, preserves the H.264/AAC/yuv420p
+export contract and rejects ambiguous HDR. Automatic recipes cap source rates
+above 60 at 60 fps; synthetic VFR input rendered to an explicit 60 fps CFR final.
+The renderer version change creates new immutable outputs and leaves old renders
+in history. Short visual inspection of an F1 final showed the HUD and caption
+within frame, with significant unused vertical space; this is not upload-ready
+acceptance or a real HDR color review.
+
+Pinned RQ/redis-py move to 2.6.1/7.1.0. On macOS TCP Redis, the worker uses
+SpawnWorker and no longer preloads CV/ASR libraries in the parent; delayed retries
+retain a scheduler. Private Redis confirmed a spawned job reached the finished
+registry. An explicit Unix socket uses the prior fork worker because its spawn
+trial failed; the scheduler can still fork and warn. A redis-py 8.1 trial also
+failed spawn argument reconstruction and was not selected. Default worker/queue
+count remains one pending realistic memory/throughput evidence.
+
+**Validation:** final backend suite **153 passed**; private Redis/RQ integration,
+real FFmpeg PQ final/HLG preview/VFR-to-60 tests, dependency check and whitespace
+check passed. No frontend changes or paid API calls. No working-library migration,
+source modification or live service restart. A representative three-hour gaming
+recording, marked quality references, cold-cache end-to-end time, first usable
+preview, real HDR appearance, whole-system peak resources and API cost were not
+available. The roughly ten upload-ready clips in twenty minutes target remains
+unverified.
+
+**Affected files and decisions:** see the matching 2026-11-17 Phase 6 entry in
+`2026-11-16-architecture-review.md`, mirrored with this checkpoint to the
+Obsidian vault. Phase 7 remains optional and was not started. Stop here for the
+user's requested phase review.
