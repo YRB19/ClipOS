@@ -13,3 +13,4 @@ opencv-python==4.10.0.84
 numpy==1.26.4
 rq==2.6.1
 redis==7.1.0
+opentimelineio==0.18.1

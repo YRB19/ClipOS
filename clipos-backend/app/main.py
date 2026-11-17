@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.models.job import init_db
-from app.routers import health, ingest, transcribe, highlights, clips, reframe, captions, scoring, jobs, edits, storage, selection
+from app.routers import health, ingest, transcribe, highlights, clips, reframe, captions, scoring, jobs, edits, storage, selection, handoff
 
 
 @asynccontextmanager
@@ -50,6 +50,7 @@ app.include_router(jobs.router)
 app.include_router(edits.router)
 app.include_router(storage.router)
 app.include_router(selection.router)
+app.include_router(handoff.router)
 
 # Preserve canonical /files/raw and /files/clips URLs with independently configured roots.
 app.mount("/files/raw", StaticFiles(directory=str(Path(settings.storage_raw).resolve()), check_dir=False), name="raw-files")
