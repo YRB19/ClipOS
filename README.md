@@ -1,18 +1,16 @@
 # ClipOS
 
-An Opus Clip clone — upload a long video (or YouTube URL) and ClipOS automatically turns it into short, vertical, captioned clips ready for social media.
+ClipOS turns long gaming recordings into short vertical clips with captions. The product target is a three-hour stream to roughly ten upload-ready clips in about twenty minutes; that quality and latency target has not yet been measured on a representative stream.
 
 ![Status: MVP](https://img.shields.io/badge/status-MVP-yellow)
 
 ## What it does
 
-1. **Ingest** a video file or YouTube URL
-2. **Transcribe** it locally with faster-whisper (base model, CPU, int8)
-3. **Detect highlights** with an LLM (NVIDIA NIM, with automatic OpenRouter fallback)
-4. **Cut clips** from the source video around each highlight
-5. **Reframe** clips to 1080×1920 vertical with dynamic face-tracking panning
-6. **Caption** each clip with burned-in ASS subtitles
-7. **Score** every clip and auto-generate a hook/title
+1. **Ingest** an upload, a local-library source, or a queued YouTube download
+2. **Transcribe and discover** candidate moments in resumable source chunks
+3. **Shortlist and rank** candidates with validated model output before export; optional audio, scene, marker, and sampled visual evidence can contribute
+4. **Render** selected clips from the original with a source-based layout, audio mix, and burned-in captions
+5. **Review or correct** clips only when wanted; the automatic path does not require manual approval
 
 ## Architecture
 
@@ -28,8 +26,9 @@ An Opus Clip clone — upload a long video (or YouTube URL) and ClipOS automatic
                                    └──────────────┘   └──────┬───────┘
                                                              │ runs pipeline
                                                              ▼
-                                    transcribe → highlights → clips → reframe
-                                              → captions → score
+                                    assets → transcribe chunks → candidate chunks
+                                           → optional visual assessment → rank
+                                           → selected recipes → final renders
 ```
 
 - **Backend** — FastAPI + SQLModel (SQLite), uvicorn on `:8000`, serves stored files at `/files`
@@ -40,14 +39,14 @@ An Opus Clip clone — upload a long video (or YouTube URL) and ClipOS automatic
 
 | # | Stage | What happens |
 |---|-------|--------------|
-| 1 | `transcribe` | Extracts 16kHz mono WAV via ffmpeg, transcribes with faster-whisper |
-| 2 | `highlights` | LLM picks viral clip candidates from the transcript |
-| 3 | `clips` | Cuts each candidate segment from the source with ffmpeg |
-| 4 | `reframe` | Dynamic vertical crop (1080×1920) that pans to follow the speaker |
-| 5 | `captions` | Generates an ASS subtitle file per clip |
-| 6 | `score` | LLM scores and titles each clip |
+| 1 | `assets` | Fingerprint the original and prepare bounded navigation assets |
+| 2 | `transcribe_chunk` | Extract speech with absolute timestamps in resumable windows |
+| 3 | `highlights_chunk` | Gather and validate candidate moments; optional audio/scene/marker signals |
+| 4 | `assess` | Optionally assess shortlisted clips with sampled visual frames |
+| 5 | `rank` | Validate global scores and select within count/duration budgets |
+| 6 | `recipe`, `render` | Build automatic edits and render selected clips from the original |
 
-`burn_captions` is **not** auto-run — it's slow and worth reviewing the generated `.ass` file first. Call it manually per clip.
+The older manual cut/reframe/caption/burn endpoints remain available for compatibility; the normal final render includes captions automatically.
 
 ## Repository structure
 
@@ -116,13 +115,13 @@ Open **http://localhost:5173**, upload a video, and hit **Run pipeline**. Watch 
 Backend `.env` (in `clipos-backend/`):
 
 ```
-NVIDIA_API_KEY=            # primary LLM for highlights/scoring (z-ai/glm-5.2 via NIM)
-OPENROUTER_API_KEY=        # optional fallback LLM when NVIDIA is unavailable
+NVIDIA_API_KEY=            # text candidate discovery and ranking
+OPENROUTER_API_KEY=        # optional text fallback; required for enabled sampled vision
 REDIS_URL=redis://localhost:6379
 DATABASE_URL=sqlite:///./clipos.db
 ```
 
-Without keys, highlight detection, scoring, and auto-titling will fail — transcription and clip cutting work regardless.
+Text model discovery/ranking requires at least one configured working provider. Audio, scene, and vision analysis are off by default until quality and cost are measured. See [backend settings](clipos-backend/.env.example).
 
 Frontend `.env` (in `clipos-frontend/`):
 
@@ -163,8 +162,8 @@ curl http://localhost:8000/jobs/<job_id>/queue_status
 
 ```bash
 cd clipos-backend
-./clipos.sh run ~/video.mp4       # upload → transcribe → highlights → clips → score
-./clipos.sh full ~/video.mp4      # same + reframe + captions (+ optional burn)
+./clipos.sh run ~/video.mp4       # legacy manual-stage helper
+./clipos.sh full ~/video.mp4      # legacy manual-stage helper with optional burn
 ./clipos.sh status                # show current job/clip
 ./clipos.sh clean all             # flush redis, drop DB, clear storage
 ```

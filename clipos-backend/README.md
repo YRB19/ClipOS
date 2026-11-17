@@ -339,3 +339,47 @@ A synthetic three-hour scheduling test verifies stop/resume and early results;
 a representative 2–4-hour recording and measured end-to-end latency/clip quality
 remain outstanding. The local library currently has no recording in that duration
 range, so the ~20-minute product target is still unverified.
+
+### Phase 5: ranked selection before export
+
+The normal automatic order is now assets → all transcription/candidate chunks →
+optional visual assessments → global ranking → recipes/final renders for the
+selected clips. Final rendering waits for ranking, avoiding speculative candidate
+exports. Existing manual stage endpoints and saved edits/renders remain available.
+
+Candidate discovery can combine transcript windows, bounded audio-reaction peaks,
+scene changes and user markers. Audio and scene peaks generate **candidate windows**;
+they do not establish that a moment is good. The global shortlist balances spoken
+and nonverbal candidates. Optional sampled-frame vision assessment uses an explicit
+image-capable OpenRouter model and requires `VISION_MODELS` plus
+`SELECTION_VISION_ENABLED=true`. Six sparse JPEG frames per clip are the default;
+they cannot prove continuous action between samples. Vision, audio and scene
+signals are off by default until comparisons on manually marked real recordings
+show their quality, cost and latency. Manual marker/review actions are optional.
+
+Model responses now pass strict schema/semantic checks (including source bounds,
+finite scores, complete IDs and duration limits) before a provider is accepted.
+Configured text/vision model tiers use per-request and total-chain deadlines,
+bounded transient retries/backoff and safe error logging. Migration 6 adds durable
+marker, selection-feedback and per-call model telemetry tables. `GET
+/jobs/{id}/selection-metrics` reports latency, known usage/cost and explicitly
+unknown review time when it was not entered; it does not infer human review time
+from a page being open. The selected clips retain canonical `highlights.json` keys.
+
+| Endpoint | Behavior |
+| --- | --- |
+| `GET /jobs/{id}/candidates` | Candidate pool with selected and feedback state |
+| `GET`, `POST /jobs/{id}/markers` | List/add a source-time marker while idle |
+| `DELETE /jobs/{id}/markers/{marker_id}` | Remove a marker while idle |
+| `PUT /jobs/{id}/clips/{clip_id}/feedback` | Save accepted/rejected/automatic review choice while idle |
+| `GET /jobs/{id}/selection-metrics` | Per-call provider telemetry and feedback totals |
+
+Changing markers, feedback or selection settings invalidates the relevant
+selection/ranking checkpoints on resume; successful ASR chunks remain reusable.
+The offline evaluator in `app/core/evaluation.py` compares transcript-only and
+combined predictions against the *same* manually marked truth windows, reporting
+missed highlights, duplicates, explicit acceptance and known review time. The
+included `../docs/fixtures/phase5-selection-example.json` is synthetic, so its report
+is only a format/function smoke test. No real-stream quality or 20-minute latency
+result is claimed. Restart API and worker to activate the new routes/settings and
+additive migration.

@@ -337,3 +337,56 @@ retention fixture. All 10 chunk/import/cache tests passed after this last guard;
 the full 123-test backend suite and 12-test frontend suite, build/lint and
 whitespace checks passed for the phase. Obsidian/repository copies were verified
 identical after appending. Phase 5 remains untouched.
+
+
+## Phase checkpoint — 2026-11-16: Phase 5 implemented; stopped for review
+
+**Status: implemented; real-recording acceptance pending.** This phase changes the
+automatic path to assets → complete ASR/candidate chunks → optional sampled visual
+assessment → bounded global rank → selected recipe/final render. It deliberately
+supersedes Phase 4's speculative early final rendering. Existing manual stage and
+revision/render history remain optional. Canonical transcript/highlight keys and
+the user's automatic three-hour → roughly ten upload-ready clips in twenty minutes
+target remain intact; the latter is still a target, not a verified result.
+
+Candidate windows now draw from transcript, optional audio peaks/scene transitions
+and source-bound manual markers. A balanced shortlist retains nonverbal candidates.
+Optional vision checks six sparse sampled frames and reports visible action,
+reaction, context, payoff and uncertainty through a validated response. Rank
+checks evidence and source intervals, applies count/duration/score budgets and
+suppresses only strongly evidenced replays. No required human review was added.
+The gallery and detail page expose reasons, candidate status and optional
+Keep/Skip/Automatic feedback. Audio, scene and vision remain disabled by default
+pending measured quality, cost and latency; chat evidence awaits a synchronized
+source.
+
+Ordered text/vision model tiers, request/chain deadlines, bounded transient
+backoff, semantic validation and secret-safe errors are now centralized.
+Migration 6 stores markers, optional feedback and per-call model telemetry. A
+batch rank checkpoint prevents rerunning successful provider batches after a
+later batch fails. Source, settings, marker and feedback changes invalidate
+appropriate selection checkpoints while successful ASR chunks stay reusable.
+Unknown provider cost and human review time are reported as unknown. The offline
+paired evaluator accepts the same truth windows for both selection modes; its
+included synthetic hand-authored example demonstrates the tool, not model quality.
+
+**Affected files:** `app/config.py`, `app/migrations/__init__.py`, new selection
+model/router and core signal/selection/validation/evaluation modules, chunk and
+pipeline orchestration, LLM clients/fallback, frontend selection-review component,
+API types and candidate/detail/progress views, tests, `.env.example`, README and
+`SKILL.md`. Detailed decisions and rationale are in the matching architecture
+review entry, mirrored to the Obsidian vault.
+
+**Validation:** final full backend run: 147 tests passed; focused Phase 5 suite:
+24 tests passed. Frontend: 15 tests
+passed; production build and lint succeeded. Whitespace check passed. Real FFmpeg
+fixture coverage includes audio/scene peaks and sampled frames; provider/rank
+failure cases are mocked. The paired evaluator CLI produced the synthetic example
+report. Migration 6 ran twice against a backup copy of the pre-existing library,
+keeping all 13 jobs/values; the working library was untouched. No representative
+2–4-hour recording, manually marked real comparison or end-to-end timing/quality
+result was available, so acceptance/latency and the twenty-minute target remain
+unverified. Live services were not restarted in this implementation check.
+
+**Next package:** Phase 6 measured speed and output tuning, after the user asks
+to continue. Stop here at the user's requested phase boundary.

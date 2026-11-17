@@ -320,3 +320,51 @@ retention fixture. All 10 chunk/import/cache tests passed after this last guard;
 the full 123-test backend suite and 12-test frontend suite, build/lint and
 whitespace checks passed for the phase. Obsidian/repository copies were verified
 identical after appending. Phase 5 remains untouched.
+
+
+## Phase 5 implementation decisions — 2026-11-16
+
+**Status: implemented; fixture/integration validated; real-stream comparison
+pending.** The user requested the next phase after Phase 4 and this package stops
+before Phase 6. The three-hour → roughly ten upload-ready clips in about twenty
+minutes remains an unverified product target.
+
+| ID | Status | Decision and rationale |
+| --- | --- | --- |
+| SELECT-003 | Implemented; supersedes SELECT-002's early render order | Gather transcript and optional audio/scene/marker candidates in bounded chunks, retain the full `candidates.json` pool, then make a balanced global shortlist and rank before creating recipes or high-quality exports. This prevents expensive speculative final renders. Preserve setup/payoff context and canonical `highlights.json` keys for selected clips. |
+| SELECT-004 | Implemented with quality evaluation pending | Audio reaction peaks and scene changes create candidate windows, not quality claims. Sparse-frame visual assessment is available only with explicit image-capable OpenRouter model configuration. Unassessed silence cannot win solely on an LLM score; confident observed visual payoff or a manual marker can ground it. Conservative replay suppression requires a matching specific event and similar nonuniform sampled frames. Audio, scene and vision switches default off until paired real-recording measurements justify their latency/cost. Chat signals are deferred because no synchronized chat source is available. |
+| SELECT-005 | Implemented | Validate provider JSON and semantics before accepting a response: IDs, finite scores, interval/source bounds, durations and complete ranking coverage. Invalid responses fall through provider tiers. Ordered model configuration, request/chain deadlines, bounded transient retries/backoff and safe error summaries avoid leaking API key fragments or raw provider bodies. Record per-call latency, stage, model, prompt version, token counts and OpenRouter cost only where supplied. Unknown cost stays unknown. |
+| SELECT-006 | Implemented | Migration 6 adds fingerprint-bound moment markers, optional accepted/rejected/automatic feedback and durable model-call telemetry. Marker/feedback writes reject active runs; resume invalidates selection/ranking but reuses valid ASR. Gallery and detail views can show reasons, candidates and review controls without requiring human approval. A page being open is not counted as review time; only explicit measured time is reported. |
+| EVAL-001 | Implemented evaluator; real study proposed | Paired offline evaluation uses the same manually marked truth intervals for transcript-only and combined selection, with one-to-one matching for misses/duplicates and explicit acceptance/review-time fields. The included synthetic hand-authored manifest/report test the evaluator format only. Real 2–4-hour gaming recordings, reference moments, acceptance, corrections and wall-clock/resource measurements are still required for a quality or twenty-minute claim. |
+
+**Affected files:** backend `config.py`, migration 6, `models/selection.py`,
+`core/signals.py`, `core/selection.py`, `core/selection_validation.py`,
+`core/evaluation.py`, chunks/highlights/scoring/provider clients/fallback,
+pipeline/queue/reconciliation, marker/feedback router and job responses; frontend
+API types, selection review, gallery/card/details/progress/status views; backend and
+frontend tests, `.env.example`, README files, `SKILL.md` and documentation mirrors.
+No top-level dependency was added. The normal final render now waits for rank;
+Phase 4's early-render behavior is superseded, while manual endpoints and render
+history remain available.
+
+**Validation:** final full backend suite **147 passed**; the focused Phase 5
+selection suite **24 passed**, frontend **15
+passed**, production build and lint succeeded, and `git diff --check` passed.
+Real FFmpeg fixtures exercise audio peaks, scene changes, preserved intervals and
+sampled image extraction. Mocked provider integration covers silent visual action,
+misleading loud noise, replay conservatism, malformed outputs, deadlines, tier
+fallback, secret-safe logs, shortlist/rank budgets and batch resume. The offline
+evaluator CLI generated the included report from explicitly synthetic inputs;
+its reported recall is not model performance. Migration 6 applied twice to a
+separate backup copy of the pre-existing library, preserving all **13** job rows
+and values; copy: `/var/folders/rp/qnp030cn1nzflxjc7gw9xmnr0000gp/T/clipos-phase5-migration-if94fupm/library-copy.db`.
+The working library was not migrated and live API/worker processes were not
+restarted as part of this check.
+
+**Remaining validation / limitations:** no representative three-hour stream or
+manually marked real comparison was available. The current defaults use transcript
+selection with global rank; optional audio/scene/vision must be enabled and
+evaluated deliberately. Sparse frames can miss fast payoffs. Live provider costs,
+end-to-end latency, upload-ready acceptance and the twenty-minute target remain
+unmeasured. Phase 6 will address measured speed/output tuning; no Phase 6 work is
+included here.

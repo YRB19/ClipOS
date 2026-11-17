@@ -218,3 +218,32 @@ an automatic run is active.
   shows its hook/reason/status without a video/download URL. Manual review remains
   optional. Real multi-hour inference/quality and the 20-minute target remain
   separate validation milestones; synthetic scheduling is not a benchmark.
+
+## Phase 5 selection additions — 2026-11-16
+
+- Phase 5 supersedes Phase 4's speculative early-render scheduling. The normal
+  order is assets → all transcribe/highlights chunks → optional assess units →
+  rank → selected recipe/render units. Keep candidate pools in `candidates.json`
+  and only final selected clips in canonical `highlights.json` after ranking.
+  Failed assessment/ranking stops before export; successful chunk/batch checkpoints
+  remain resumable. Legacy manual stage endpoints are still optional.
+- `core/signals.py` derives bounded audio peaks and scene transitions as candidate
+  evidence, not clip quality. Source-time user markers are bound to a source
+  fingerprint. Audio, scene and sampled-frame vision are configurable and off by
+  default until real marked-recording comparisons show value. An unassessed silent
+  candidate must not be selected solely from a high model score.
+- `core/selection.py` owns balanced global shortlist, optional sampled-frame
+  assessment, final rank, grounding and replay suppression. Vision currently uses
+  explicit image-capable OpenRouter models. Sparse frames cannot establish unseen
+  actions. Rank score/ID/interval validation is mandatory before provider success;
+  record only evidence-grounded reasons. Preserve setup and payoff intervals.
+- `core/llm_fallback.py` centralizes ordered model tiers, request/chain deadlines,
+  transient retry/backoff and safe error summaries. Never log key fragments, raw
+  provider bodies or prompts. Migration 6 adds `moment_markers`,
+  `selection_feedback` and `model_calls` for optional review and per-call telemetry;
+  unknown usage/cost/review time remain unknown, not zero-valued measurements.
+- `GET /jobs/{id}/candidates`, marker and feedback routes expose optional review.
+  Mutations reject active pipeline runs. Marker/feedback/settings changes invalidate
+  selection/ranking checkpoints while retaining valid ASR. The offline paired
+  evaluator is only evidence of quality when fed real recordings with the same
+  manually marked reference moments in both arms; synthetic fixtures are smoke tests.
