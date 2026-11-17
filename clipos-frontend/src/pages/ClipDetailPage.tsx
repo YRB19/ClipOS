@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { ScoreMeter } from "@/components/ScoreMeter";
+import { FeedbackButtons } from "@/components/SelectionReview";
 import { api, type HighlightClip } from "@/lib/api";
 
 export function ClipDetailPage() {
@@ -110,7 +111,7 @@ export function ClipDetailPage() {
                 controls
                 className="w-full h-full object-cover"
                 playsInline
-              /> : <div className="h-full flex items-center justify-center p-6 text-center text-muted">{clip.processing_error || "Candidate selected. Your clip is being prepared."}</div>}
+              /> : <div className="h-full flex items-center justify-center p-6 text-center text-muted">{clip.processing_error || "Candidate found. Ranking runs before final rendering."}</div>}
             </div>
             <Tabs value={variant} onValueChange={(v) => setVariant(v as "vertical" | "original" | "captioned" | "final")}>
               <TabsList className="w-full">
@@ -143,6 +144,9 @@ export function ClipDetailPage() {
               </span>
             </div>
 
+            {(clip.rank_reasoning || clip.reasoning) && <p className="text-sm text-muted">{clip.rank_reasoning || clip.reasoning}</p>}
+            {clip.visual && <p className="text-sm text-muted">Visual evidence: {clip.visual.reason}</p>}
+            <FeedbackButtons jobId={jobId} clip={clip} />
             {/* Score Meter */}
             <Card>
               <CardContent className="p-4">

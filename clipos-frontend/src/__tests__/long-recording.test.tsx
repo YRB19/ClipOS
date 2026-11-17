@@ -49,7 +49,7 @@ describe("Long recording flow", () => {
       <Route path="/jobs/:jobId" element={<GalleryPage />} /></Routes></MemoryRouter>);
     await screen.findByText("Early payoff");
     await waitFor(() => expect(document.querySelector("video")).toBeNull());
-    expect(screen.getByText(/preparing clip/)).toBeTruthy();
+    expect(screen.getByText(/awaiting ranking or rendering/)).toBeTruthy();
   });
 });
 

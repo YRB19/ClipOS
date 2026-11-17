@@ -125,7 +125,7 @@ export function ProgressPage() {
                 <div className="mt-5 space-y-3 text-sm text-muted">
                   <p>{status.completed_units ?? 0} / {status.total_units ?? 0} steps complete · {status.completed_clips ?? 0} clips ready · {status.failed_clips ?? 0} clips failed</p>
                   <progress className="w-full accent-accent" aria-label="Processing progress" max={status.total_units || 1} value={status.completed_units || 0} />
-                  <p className="text-xs">{status.total_chunks ? `${status.analyzed_chunks ?? 0} / ${status.total_chunks} sections analyzed. Early candidates are available while processing continues.` : "Steps expand when highlights are found."}</p>
+                  <p className="text-xs">{status.total_chunks ? `${status.analyzed_chunks ?? 0} / ${status.total_chunks} sections analyzed. Candidates appear during analysis. Final ranking runs before rendering.` : "Steps expand when highlights are found."}</p>
                   {status.clips?.filter((clip) => clip.status === "failed").map((clip) => (
                     <p key={clip.clip_id} className="text-destructive">{clip.clip_id}: {clip.stage} — {clip.error_message}</p>
                   ))}

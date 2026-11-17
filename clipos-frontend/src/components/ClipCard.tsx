@@ -34,7 +34,7 @@ export function ClipCard({ clip, jobId }: ClipCardProps) {
           muted
           onMouseEnter={(e) => (e.target as HTMLVideoElement).play().catch(() => {})}
           onMouseLeave={(e) => { const v = e.target as HTMLVideoElement; v.pause(); v.currentTime = 0; }}
-        /> : <div className="h-full flex items-center justify-center p-4 text-center text-muted text-sm">{clip.processing_error || "Candidate selected · preparing clip"}</div>}
+        /> : <div className="h-full flex items-center justify-center p-4 text-center text-muted text-sm">{clip.processing_error || "Candidate found · awaiting ranking or rendering"}</div>}
         <div className="absolute top-2 left-2 z-10">
           <Tabs value={variant} onValueChange={(v) => setVariant(v as "vertical" | "original")} onClick={(e) => e.stopPropagation()}>
             <TabsList className="bg-ink/80 backdrop-blur-sm rounded border border-line h-7 px-0.5">
@@ -59,7 +59,7 @@ export function ClipCard({ clip, jobId }: ClipCardProps) {
               <h3 className="font-display text-sm font-medium truncate text-paper">{clip.title || clip.hook_text}</h3>
             )}
             {(clip.final_hook_text || clip.reasoning) && (
-              <p className="text-xs text-muted mt-0.5 line-clamp-1">{clip.final_hook_text || clip.reasoning}</p>
+              <p className="text-xs text-muted mt-0.5 line-clamp-1">{clip.rank_reasoning || clip.reasoning || clip.final_hook_text}</p>
             )}
           </div>
           <div className="flex items-center gap-1.5 shrink-0">

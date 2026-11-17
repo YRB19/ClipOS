@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { ArrowLeft, XCircle } from "lucide-react";
+import { SelectionReview } from "@/components/SelectionReview";
 import { ClipCard } from "@/components/ClipCard";
 import { api, type HighlightClip } from "@/lib/api";
 
@@ -65,9 +66,11 @@ export function GalleryPage() {
           <span className="font-mono text-xs text-muted">{jobId?.slice(0, 8)}</span>
         </div>
 
+        <SelectionReview jobId={jobId!} />
+
         {clips.length === 0 ? (
           <div className="rounded-xl border border-line bg-ink-raised p-12 text-center text-muted">
-            No clips generated
+            No clips selected yet. Candidates remain available in optional review.
           </div>
         ) : (
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
