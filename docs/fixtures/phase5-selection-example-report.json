@@ -1,0 +1,35 @@
+{
+  "dataset_kind": "synthetic evaluator smoke test; predictions are hand-authored, not model quality measurements",
+  "method": "Same ground truth; one-to-one matching with >=50% marked-interval coverage. Human acceptance is separate.",
+  "recordings": [
+    {
+      "recording_id": "synthetic-spoken-silent-replay",
+      "transcript_only": {
+        "marked_moments": 2,
+        "matched_moments": 1,
+        "missed_highlights": 1,
+        "recall": 0.5,
+        "overlap_precision": 0.5,
+        "duplicate_candidates": 1,
+        "candidates": 2,
+        "reviewed": 0,
+        "accepted": 0,
+        "acceptance_rate": null,
+        "review_seconds": null
+      },
+      "combined": {
+        "marked_moments": 2,
+        "matched_moments": 2,
+        "missed_highlights": 0,
+        "recall": 1.0,
+        "overlap_precision": 1.0,
+        "duplicate_candidates": 0,
+        "candidates": 2,
+        "reviewed": 0,
+        "accepted": 0,
+        "acceptance_rate": null,
+        "review_seconds": null
+      }
+    }
+  ]
+}

@@ -1,0 +1,212 @@
+{
+  "date": "2026-11-17",
+  "status": "short local probes; not a three-hour gaming-stream benchmark",
+  "hardware": {
+    "machine": "Apple M4",
+    "unified_memory_bytes": 17179869184,
+    "ffmpeg": "ffmpeg-full 9.0.2"
+  },
+  "method": {
+    "render": "ClipOS source composition with caption, 1080x1920 H.264/AAC; FFV1 lossless composition reference; one six-second run per setting; SSIM is a screening metric only",
+    "asr": "same 30-second real speech WAV, base model and word timestamps; synthetic speech has known reference text; independent cold Python processes",
+    "asset": "isolated SQLite and temporary navigation assets on a real 494-second source; source read only",
+    "contention": "one 30-second CPU ASR process and one six-second libx264 render, serial then concurrent, one isolated run"
+  },
+  "assets": {
+    "source_seconds": 494.213515,
+    "source_bytes": 170458915,
+    "fingerprint_wall_seconds": 0.462,
+    "navigation_wall_seconds": 6.918,
+    "navigation_coverage_seconds": 60,
+    "temporary_bytes": 8951591
+  },
+  "asr": {
+    "real_30_seconds": {
+      "faster_whisper_cpu_int8_base": {
+        "total_seconds": 3.473,
+        "realtime_factor": 0.116,
+        "peak_rss_bytes": 555220992,
+        "word_count": 92,
+        "invalid_word_times": 0,
+        "wer": null
+      },
+      "mlx_whisper_base_first_with_download": {
+        "total_seconds": 25.268,
+        "realtime_factor": 0.842,
+        "peak_rss_bytes": 533381120,
+        "word_count": 92,
+        "invalid_word_times": 1,
+        "wer": null
+      },
+      "mlx_whisper_base_cached_model_new_process": {
+        "total_seconds": 3.03,
+        "realtime_factor": 0.101,
+        "peak_rss_bytes": 480985088,
+        "word_count": 92,
+        "invalid_word_times": 1,
+        "wer": null
+      }
+    },
+    "synthetic_speech_14_49_seconds": {
+      "faster_whisper_cpu_int8_base": {
+        "total_seconds": 2.227,
+        "realtime_factor": 0.154,
+        "peak_rss_bytes": 558956544,
+        "word_count": 46,
+        "invalid_word_times": 0,
+        "wer": 0.02127659574468085
+      },
+      "mlx_whisper_base_cached_model_new_process": {
+        "total_seconds": 2.666,
+        "realtime_factor": 0.184,
+        "peak_rss_bytes": 468664320,
+        "word_count": 48,
+        "invalid_word_times": 0,
+        "wer": 0.0425531914893617
+      }
+    }
+  },
+  "renders": {
+    "real_f1_50fps_8mbps": {
+      "libx264_crf20": {
+        "wall_seconds": 1.944,
+        "peak_rss_bytes": 746717184,
+        "size_bytes": 3501804,
+        "render_fps": 154.32,
+        "realtime_factor": 3.086,
+        "ssim_to_lossless": 0.995934,
+        "actual_frame_rate": "50/1",
+        "codec": "h264",
+        "color": {
+          "color_range": "tv",
+          "color_space": "bt709",
+          "color_transfer": "bt709",
+          "color_primaries": "bt709",
+          "pix_fmt": "yuv420p"
+        }
+      },
+      "h264_videotoolbox_8mbps": {
+        "wall_seconds": 1.756,
+        "peak_rss_bytes": 229228544,
+        "size_bytes": 5913717,
+        "render_fps": 170.84,
+        "realtime_factor": 3.417,
+        "ssim_to_lossless": 0.996431,
+        "actual_frame_rate": "50/1",
+        "codec": "h264",
+        "color": {
+          "color_range": "tv",
+          "color_space": "bt709",
+          "color_transfer": "bt709",
+          "color_primaries": "bt709",
+          "pix_fmt": "yuv420p"
+        }
+      }
+    },
+    "real_f1_50fps_5mbps": {
+      "libx264_crf20": {
+        "wall_seconds": 2.434,
+        "peak_rss_bytes": 742064128,
+        "size_bytes": 3501804,
+        "render_fps": 123.25,
+        "realtime_factor": 2.465,
+        "ssim_to_lossless": 0.995934,
+        "actual_frame_rate": "50/1",
+        "codec": "h264",
+        "color": {
+          "color_range": "tv",
+          "color_space": "bt709",
+          "color_transfer": "bt709",
+          "color_primaries": "bt709",
+          "pix_fmt": "yuv420p"
+        }
+      },
+      "h264_videotoolbox_5mbps": {
+        "wall_seconds": 1.824,
+        "peak_rss_bytes": 228868096,
+        "size_bytes": 3831027,
+        "render_fps": 164.47,
+        "realtime_factor": 3.289,
+        "ssim_to_lossless": 0.994328,
+        "actual_frame_rate": "50/1",
+        "codec": "h264",
+        "color": {
+          "color_range": "tv",
+          "color_space": "bt709",
+          "color_transfer": "bt709",
+          "color_primaries": "bt709",
+          "pix_fmt": "yuv420p"
+        }
+      }
+    },
+    "real_f1_30000_1001fps_8mbps": {
+      "libx264_crf20": {
+        "wall_seconds": 1.238,
+        "peak_rss_bytes": 765165568,
+        "size_bytes": 2678961,
+        "render_fps": 145.25,
+        "realtime_factor": 4.847,
+        "ssim_to_lossless": 0.968851,
+        "actual_frame_rate": "30000/1001",
+        "codec": "h264",
+        "color": {
+          "color_range": "tv",
+          "color_space": "bt709",
+          "color_transfer": "bt709",
+          "color_primaries": "bt709",
+          "pix_fmt": "yuv420p"
+        }
+      },
+      "h264_videotoolbox_8mbps": {
+        "wall_seconds": 1.096,
+        "peak_rss_bytes": 225656832,
+        "size_bytes": 3873647,
+        "render_fps": 164.07,
+        "realtime_factor": 5.474,
+        "ssim_to_lossless": 0.968316,
+        "actual_frame_rate": "30000/1001",
+        "codec": "h264",
+        "color": {
+          "color_range": "tv",
+          "color_space": "bt709",
+          "color_transfer": "bt709",
+          "color_primaries": "bt709",
+          "pix_fmt": "yuv420p"
+        }
+      }
+    }
+  },
+  "contention": {
+    "serial": {
+      "asr_wall_seconds": 2.956,
+      "render_wall_seconds": 1.959,
+      "total_wall_seconds": 4.979
+    },
+    "concurrent": {
+      "asr_wall_seconds": 4.021,
+      "render_wall_seconds": 3.041,
+      "total_wall_seconds": 4.104
+    }
+  },
+  "output_checks": {
+    "pq_to_bt709": "synthetic final render passed",
+    "hlg_to_bt709": "synthetic preview render passed",
+    "vfr_to_60fps_cfr": "synthetic final render passed",
+    "sample_hud_caption": "one F1 frame visually inspected; visible, large unused vertical bars",
+    "audio_video_alignment": "metadata checks passed on sample; perceptual lip sync not assessed"
+  },
+  "unknown": {
+    "three_hour_end_to_end_wall_seconds": null,
+    "time_to_first_usable_preview_seconds": null,
+    "real_gaming_clip_acceptance": null,
+    "paid_model_api_cost": null,
+    "real_hdr_color_quality": null
+  },
+  "limitations": [
+    "F1 broadcast samples are not gaming streams",
+    "one short render run per setting; no uncertainty estimate",
+    "synthetic speech WER is not gaming-language accuracy",
+    "MLX first run includes checkpoint download and one real-audio word had zero duration",
+    "no full automatic provider-to-render run was executed"
+  ]
+}

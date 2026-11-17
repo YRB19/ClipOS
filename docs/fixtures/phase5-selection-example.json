@@ -1,0 +1,47 @@
+{
+  "dataset_kind": "synthetic evaluator smoke test; predictions are hand-authored, not model quality measurements",
+  "recordings": [
+    {
+      "recording_id": "synthetic-spoken-silent-replay",
+      "duration_seconds": 120,
+      "truth": [
+        {
+          "start": 10,
+          "end": 20
+        },
+        {
+          "start": 60,
+          "end": 75
+        }
+      ],
+      "transcript_only": {
+        "predictions": [
+          {
+            "clip_id": "spoken",
+            "start": 5,
+            "end": 25
+          },
+          {
+            "clip_id": "repeat",
+            "start": 6,
+            "end": 26
+          }
+        ]
+      },
+      "combined": {
+        "predictions": [
+          {
+            "clip_id": "spoken",
+            "start": 5,
+            "end": 25
+          },
+          {
+            "clip_id": "silent",
+            "start": 50,
+            "end": 85
+          }
+        ]
+      }
+    }
+  ]
+}
