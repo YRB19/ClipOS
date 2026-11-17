@@ -187,7 +187,7 @@ def default_recipe(job_id, clip_id, asset, db_engine=None):
                 for w in words if w['end'] > interval.start and w['start'] < interval.end]
     try:
         rate = Fraction(meta['frame_rate'])
-        rate = rate if 1 <= rate <= 60 else Fraction(30)
+        rate = min(rate, Fraction(60)) if rate >= 1 else Fraction(30)
     except (ValueError, ZeroDivisionError):
         rate = Fraction(30)
     tracks = [AudioTrack(stream_index=meta['audio_tracks'][0]['stream_index'])] if meta['audio_tracks'] else []
