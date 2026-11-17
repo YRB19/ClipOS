@@ -7,6 +7,7 @@ def migrate(engine):
     from app.models.execution import PipelineRun, StageAttempt, ClipState
     from app.models.edit import SourceAsset, ClipEdit, EditRevision, RenderOutput
     from app.models.source_import import SourceImport
+    from app.models.selection import MomentMarker, SelectionFeedback, ModelCall
     with engine.begin() as conn:
         conn.execute(text('CREATE TABLE IF NOT EXISTS schema_migrations '
                           '(version INTEGER PRIMARY KEY, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)'))
@@ -40,3 +41,7 @@ def migrate(engine):
             if 'generated_signature' not in columns:
                 conn.execute(text('ALTER TABLE clip_edits ADD COLUMN generated_signature TEXT'))
             conn.execute(text('INSERT INTO schema_migrations(version) VALUES (5)'))
+        if 6 not in versions:
+            for model in (MomentMarker, SelectionFeedback, ModelCall):
+                model.__table__.create(conn, checkfirst=True)
+            conn.execute(text('INSERT INTO schema_migrations(version) VALUES (6)'))

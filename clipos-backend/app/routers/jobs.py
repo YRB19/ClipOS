@@ -119,7 +119,10 @@ def get_highlights(job_id: str, session: Session = Depends(get_session)):
         data = json.loads(highlights_path.read_text())
         from app.models.execution import ClipState
         states = {c.clip_id: c for c in session.exec(select(ClipState).where(ClipState.job_id == job_id)).all()}
+        from app.core.selection import feedback, decision
+        decisions = feedback(job_id, session.get_bind())
         for h in data:
+            h['feedback'] = decision(h, decisions)
             clip_dir = Path(settings.storage_clips) / job_id / h['clip_id']
             h['available_variants'] = [name for name in ('clip.mp4', 'clip_vertical.mp4', 'clip_captioned.mp4')
                                        if (clip_dir / name).is_file() and (clip_dir / name).stat().st_size > 0]
