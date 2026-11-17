@@ -413,3 +413,38 @@ gaming clip quality, real HDR appearance and statistical run variability are
 unknown. MLX and VideoToolbox results are one-run local probes; neither is a
 product-quality result. The twenty-minute claim remains open. Stop here at the
 user's phase boundary.
+
+## Phase 7 decisions — 2026-11-17
+
+**Status: implemented ClipOS handoff and MCP; Resolve validation proposed.** The
+user requested the next phase after Phase 6. This entry records the optional
+integration work and stops at the phase boundary. The automatic three-hour gaming
+stream → roughly ten upload-ready clips in twenty minutes remains unverified.
+
+| ID | Status | Decision and rationale |
+| --- | --- | --- |
+| HANDOFF-001 | Implemented in ClipOS; Resolve import proposed | Export the selected shortlist as source-linked OpenTimelineIO `timeline.otio`, combined/per-clip SRT and a manifest. Reuse saved revisions or derive defaults without creating edits. Frame-quantize trims outward, retain requested seconds, include a default source audio track when present, attach fingerprint-bound markers, read back the OTIO and publish atomically. This provides an optional route into a native editor without changing automatic output. OTIO read-back is not evidence of Resolve relink or frame accuracy. |
+| HANDOFF-002 | Implemented documentation | Treat ClipOS vertical layout, animated captions, crop motion and selected audio mixing as recipe data that must be rebuilt in Resolve; use the ClipOS final render when exact flattened appearance is required. SRT carries caption text/timing, not ClipOS style. Do not promise transfer of these effects through OTIO. |
+| MCP-001 | Implemented and isolated | Expose project-scoped search, edit draft, revisioned save, tracked render, status and handoff through stdio MCP. Every mutation calls the existing backend API, retaining recipe validation, revision conflicts, idle guard and durable render IDs. Restrict the server to a configured job UUID and local HTTP origin. Install MCP 2.3.0 in a separate environment because its Starlette dependency conflicts with FastAPI 0.115.6's pin. |
+| RESOLVE-001 | Proposed validation; blocked on installed app state | Resolve 21.0.0.47 scripting connected, but could not create a QA project; `GetCurrentDatabase` and `GetDatabaseList` returned `None`. Desktop UI automation was unavailable. Consequently, import, relink, marker behavior, frame-accurate timeline ranges and a Resolve render have not been verified. The identified official AI assistant requires Resolve Studio 21.1, beyond the installed version; no upgrade/purchase was made. |
+
+**Affected files:** `clipos-backend/app/core/resolve_handoff.py`,
+`app/routers/handoff.py`, `app/main.py`, `mcp_server.py`,
+`requirements.txt`, `requirements-mcp.txt`, `.gitignore`,
+`tests/test_handoff.py`, `tools/smoke_mcp.py`, `SKILL.md`,
+`docs/2026-11-17-phase7-handoff.md` and these repository/vault mirrors.
+
+**Validation:** backend suite **156 passed** with isolated media and a real MCP
+stdio client calling a live isolated FastAPI server. The OTIO file read back with
+two source intervals, marker, source URI and SRT; the original source hash stayed
+unchanged. The MCP smoke sequence searched, rejected a bad source fingerprint via
+API 422, saved a valid edit revision, returned durable render/task IDs, polled
+render history and exported a handoff. Its queue was mocked; it did not wait for
+encoding, perform an LLM interpretation or render in Resolve. Backend and MCP
+environments each passed `pip check`; `git diff --check` passed. No user library
+or named Resolve project was modified.
+
+**Remaining check:** import an exported shortlist into a working Resolve project,
+verify online media and exact source frames/markers, edit and render. Native
+Resolve Studio 21.1 assistant evaluation is still conditional on a compatible
+installation. Phase 7 remains optional for the automatic product workflow.

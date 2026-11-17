@@ -436,3 +436,17 @@ unverified.
 `2026-11-16-architecture-review.md`, mirrored with this checkpoint to the
 Obsidian vault. Phase 7 remains optional and was not started. Stop here for the
 user's requested phase review.
+
+## Phase 7 checkpoint — 2026-11-17
+
+The optional ClipOS source-linked OTIO/SRT handoff and project-scoped MCP server
+are implemented. OpenTimelineIO read-back and a real MCP stdio client over an
+isolated FastAPI server passed, including recipe rejection, revisioned save and
+durable render task IDs. The MCP test used a mocked queue and did not establish
+completed rendering or model language understanding. Installed Resolve 21.0.0.47
+exposed its scripting API but no usable project database, so the required Resolve
+import/relink/frame inspection/edit/render check is open. The official Studio 21.1
+integration cannot be evaluated on this installation. See the matching Phase 7
+decision entry in `2026-11-16-architecture-review.md` and the handoff guide in
+`2026-11-17-phase7-handoff.md`. The automatic product target is still unverified.
+Stop here for the user's requested phase review.

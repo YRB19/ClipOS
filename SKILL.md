@@ -267,3 +267,20 @@ an automatic run is active.
   combination failed a private Redis integration check. The scheduler remains
   enabled for delayed retries and may still fork. Avoid preloading CV/ASR in the
   worker parent. Test queue changes against private Redis and isolated storage.
+
+## Phase 7 optional handoff/MCP additions — 2026-11-17
+
+- `core/resolve_handoff.py` owns source-linked OTIO/SRT exports. Read selected
+  highlights and saved recipe revisions without creating edits; preserve original
+  media and publish only read-back-validated, staged handoff folders. Record both
+  requested seconds and frame-quantized bounds. Keep layout, audio mix and caption
+  animation in the manifest as rebuild instructions; do not claim OTIO reproduces
+  ClipOS final renders.
+- `GET /jobs/{id}/moments/search` searches only that job's candidate text and
+  transcript. `POST /jobs/{id}/resolve-export` accepts selected clip IDs, never
+  arbitrary media paths. These optional endpoints do not alter the automatic run.
+- `mcp_server.py` is a stdio MCP adapter with `CLIPOS_MCP_JOB_ID` and local HTTP
+  origin. It calls existing edit/render/status APIs, so revision, recipe, idle and
+  durable task gates remain authoritative. Install `requirements-mcp.txt` in a
+  separate environment; MCP's current transport Starlette conflicts with the
+  backend FastAPI pin. Resolve import/render remains an explicit validation gate.
