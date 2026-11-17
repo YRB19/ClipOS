@@ -1,0 +1,3 @@
+# Install in a separate environment: MCP's transport requires newer Starlette than the backend pin.
+mcp==2.3.0
+httpx==0.28.1
