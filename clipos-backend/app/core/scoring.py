@@ -12,6 +12,7 @@ from pathlib import Path
 from app.config import settings
 from app.core.artifacts import write_json
 from app.core.llm_fallback import call_llm_with_fallback
+from app.core.selection_validation import scores_response
 from app.models.job import Job, engine
 from sqlmodel import Session
 
@@ -114,8 +115,10 @@ def score_and_title_clips(job_id: str) -> list[dict]:
 
     if transcript:
         raw_content, _provider_used = call_llm_with_fallback(
-            messages=messages, temperature=0.3, max_tokens=4096)
-        scoring_results = _parse_scoring_response(raw_content)
+            messages=messages, temperature=0.3, max_tokens=4096,
+            validate=lambda raw: scores_response(raw, [h['clip_id'] for h in highlights]),
+            job_id=job_id, stage='score', prompt_version='score-v2', db_engine=engine)
+        scoring_results = scores_response(raw_content, [h['clip_id'] for h in highlights])
     else:
         scoring_results = [dict(clip_id=h['clip_id'], title=h['hook_text'],
                                final_hook_text=h['hook_text'], final_score=h['virality_score'],
