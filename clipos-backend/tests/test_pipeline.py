@@ -293,7 +293,7 @@ def test_migrations_on_backed_up_legacy_db_are_repeatable(tmp_path):
         assert session.get(Job, 'old').duration_seconds == 123
         assert session.get(Job, 'old').updated_at is not None
     with sqlite3.connect(migrated) as conn:
-        assert conn.execute('SELECT count(*) FROM schema_migrations').fetchone()[0] == 5
+        assert conn.execute('SELECT count(*) FROM schema_migrations').fetchone()[0] == 6
     with sqlite3.connect(original) as conn:
         assert 'updated_at' not in [row[1] for row in conn.execute('PRAGMA table_info(jobs)')]
 

@@ -293,8 +293,8 @@ def test_parse_scoring_response_raises_on_garbage():
         _parse_scoring_response("not json at all")
 
 
-def test_missing_clip_id_in_llm_response_graceful(client, db_engine, tmp_path):
-    """If LLM omits a clip_id, that clip keeps original fields with defaults for new ones."""
+def test_missing_clip_id_in_llm_response_rejected(client, db_engine, tmp_path):
+    """Incomplete scoring is invalid and must not overwrite successful selection data."""
     partial_response = json.dumps([
         {
             "clip_id": "clip-aaa-111",
@@ -310,17 +310,9 @@ def test_missing_clip_id_in_llm_response_graceful(client, db_engine, tmp_path):
         with patch(MOCK_ENGINE_PATCH, db_engine):
             resp = client.post(f"/jobs/{job_id}/score")
 
-    assert resp.status_code == 200
-    scored = resp.json()
-    assert len(scored) == 2
-
-    aaa = next(e for e in scored if e["clip_id"] == "clip-aaa-111")
-    assert aaa["title"] == "The Opener"
-
-    bbb = next(e for e in scored if e["clip_id"] == "clip-bbb-222")
-    assert bbb["title"] == ""
-    assert bbb["final_hook_text"] == "Second hook"
-    assert bbb["final_score"] == 0.7
+    assert resp.status_code == 500
+    on_disk = json.loads((Path('./storage/raw')/job_id/'highlights.json').read_text())
+    assert len(on_disk) == 2 and all('final_score' not in h for h in on_disk)
 
 
 def test_all_tiers_fail(client, db_engine, tmp_path):

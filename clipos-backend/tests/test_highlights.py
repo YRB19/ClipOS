@@ -120,8 +120,11 @@ def transcribed_job_id(client, tiny_mp4, db_engine, tmp_path):
     # Update status directly in DB since we patched the engine during transcribe
     with Session(db_engine) as session:
         job = session.get(Job, job_id)
-        if job and job.status != "transcribed":
+        if job:
             job.status = "transcribed"
+            # Selection responses use a synthetic 300-second timeline; media
+            # operations remain on the tiny fixture and do not benchmark ASR.
+            job.duration_seconds = 300
             session.add(job)
             session.commit()
 
@@ -422,8 +425,9 @@ def test_all_tiers_fail_raises_combined_error(client, transcribed_job_id, db_eng
         job = session.get(Job, transcribed_job_id)
         assert job.status == "failed"
         assert job.error_message is not None
-        assert "GLM down" in job.error_message
-        assert "OpenRouter timeout" in job.error_message
+        assert "ConnectionError" in job.error_message
+        assert "GLM down" not in job.error_message
+        assert "TimeoutError" in job.error_message
 
 
 def test_identical_output_regardless_of_provider(client, transcribed_job_id, db_engine, tmp_path):

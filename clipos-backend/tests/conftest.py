@@ -18,12 +18,13 @@ def isolated_runtime(tmp_path, monkeypatch):
     (tmp_path / 'storage').mkdir(exist_ok=True)
     monkeypatch.setattr(settings, 'storage_raw', './storage/raw')
     monkeypatch.setattr(settings, 'storage_clips', './storage/clips')
+    monkeypatch.setattr(settings, 'llm_backoff_seconds', 0)
     engine = create_engine(f'sqlite:///{tmp_path}/isolated-runtime.db', connect_args={'check_same_thread': False})
     init_db(engine)
     for name in ['app.models.job', 'app.core.transcribe', 'app.core.highlights', 'app.core.scoring',
                  'app.core.clip_cutter', 'app.core.pipeline', 'app.core.execution',
                  'app.core.recipes', 'app.core.assets', 'app.core.renders',
-                 'app.core.chunks', 'app.core.imports', 'app.core.cache']:
+                 'app.core.chunks', 'app.core.imports', 'app.core.cache', 'app.core.llm_fallback', 'app.core.selection']:
         monkeypatch.setattr(importlib.import_module(name), 'engine', engine)
     from app.main import app
     for route in app.routes:

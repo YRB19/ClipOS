@@ -65,7 +65,7 @@ def test_silence_is_successful_visual_eligibility_and_uses_no_provider(source, m
     monkeypatch.setattr('app.core.transcribe._call_whisper_asr', lambda _: [])
     chunks.transcribe_chunk('job', '0')
     candidates = chunks.highlights_chunk('job', '0')
-    assert len(candidates) == 1 and candidates[0]['evidence'] == 'silent_unassessed'
+    assert len(candidates) == 1 and candidates[0]['evidence'] == ['silent_unassessed']
     assert candidates[0]['virality_score'] == 0
     assert chunks.highlights_chunk('job', '0') == candidates
     from app.core.scoring import score_and_title_clips
@@ -150,7 +150,7 @@ def test_failed_download_is_durable_and_timeout_bounded(source, monkeypatch):
     with Session(engine) as session: assert session.get(SourceImport, 'job').status == 'failed'
 
 
-def test_three_hour_schedule_cancel_resume_and_early_render(source, monkeypatch):
+def test_three_hour_schedule_cancel_resume_and_rank_before_render(source, monkeypatch):
     """36 five-minute sections; does not claim inference latency or clip quality."""
     engine, path = source
     monkeypatch.setattr(settings, 'chunk_seconds', 300)
@@ -178,7 +178,7 @@ def test_three_hour_schedule_cancel_resume_and_early_render(source, monkeypatch)
     monkeypatch.setattr(pipeline, 'input_signature', lambda job, stage, clip=None: original_input(job, stage, clip) if stage.endswith('_chunk') else stage+str(clip))
     run, _ = pipeline.claim_run('job'); pipeline.dispatch_next(run.run_id)
     for _ in range(5): pipeline.run_stage(pending.pop(0))
-    assert stages[:5] == [('assets', None), ('transcribe_chunk', '0'), ('highlights_chunk', '0'), ('recipe', 'clip0'), ('render', 'clip0')]
+    assert stages[:5] == [('assets', None), ('transcribe_chunk', '0'), ('highlights_chunk', '0'), ('transcribe_chunk', '1'), ('highlights_chunk', '1')]
     with Session(engine) as session:
         current = session.get(PipelineRun, run.run_id); current.cancel_requested = True; session.add(current); session.commit()
     pipeline.run_stage(pending.pop(0))
@@ -191,6 +191,8 @@ def test_three_hour_schedule_cancel_resume_and_early_render(source, monkeypatch)
     assert sum(s == 'transcribe_chunk' for s, _ in stages) == 36
     assert sum(s == 'highlights_chunk' for s, _ in stages) == 36
     assert sum(s == 'render' for s, _ in stages) == 10
+    assert next(i for i,(s,_) in enumerate(stages) if s == 'rank') > max(i for i,(s,_) in enumerate(stages) if s == 'highlights_chunk')
+    assert next(i for i,(s,_) in enumerate(stages) if s == 'render') > next(i for i,(s,_) in enumerate(stages) if s == 'rank')
     with Session(engine) as session: assert session.get(PipelineRun, resumed.run_id).status == 'completed'
 
 

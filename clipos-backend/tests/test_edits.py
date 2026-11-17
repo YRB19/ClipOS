@@ -389,6 +389,11 @@ def test_chunk_pipeline_real_source_render_and_caption_only_resume(source, monke
     monkeypatch.setattr('app.core.transcribe._call_whisper_asr', asr)
     monkeypatch.setattr('app.core.highlights.call_llm_with_fallback', selection)
     monkeypatch.setattr('app.core.scoring.score_and_title_clips', lambda _: None)
+    def rank_llm(**kwargs):
+        block = json.loads(kwargs['messages'][1]['content'])
+        return json.dumps([dict(clip_id=h['clip_id'], title='Payoff', final_hook_text='Payoff',
+                               final_score=.8, rank_reasoning='Setup and payoff') for h in block]), 'mock'
+    monkeypatch.setattr('app.core.selection.call_llm_with_fallback', rank_llm)
     def execute():
         run, _ = pipeline.claim_run('job'); pipeline.dispatch_next(run.run_id)
         for _ in range(20):
